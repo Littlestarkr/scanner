@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>문서 스캐너</title>
+    <title>다중 문서 컬러 스캐너</title>
     <!-- 영역 선택을 위한 Cropper.js -->
     <link href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
@@ -11,172 +11,144 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <style>
         body { font-family: sans-serif; margin: 0; padding: 20px; background-color: #f4f4f4; color: #333; }
-        .container { max-width: 600px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        h1 { text-align: center; font-size: 1.5rem; }
+        .container { max-width: 800px; margin: auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h1 { text-align: center; font-size: 1.5rem; margin-bottom: 20px; }
         input[type="file"] { display: none; }
-        .btn { display: inline-block; padding: 12px 15px; background: #333; color: white; border: none; border-radius: 4px; cursor: pointer; text-align: center; width: 100%; box-sizing: border-box; margin-bottom: 10px; font-size: 1rem; font-weight: bold; }
+        .btn { display: inline-block; padding: 12px 15px; background: #333; color: white; border: none; border-radius: 4px; cursor: pointer; text-align: center; width: 100%; box-sizing: border-box; margin-bottom: 15px; font-size: 1rem; font-weight: bold; }
         .btn:hover { background: #555; }
-        .btn-action { background: #0056b3; }
+        .btn-action { background: #0056b3; margin-top: 20px; }
         .btn-action:hover { background: #004494; }
-        #crop-area { display: none; margin-top: 20px; }
-        .img-container { max-width: 100%; max-height: 60vh; margin-bottom: 15px; background: #eee; }
+        
+        #workspace { display: flex; flex-direction: column; gap: 30px; margin-top: 20px; }
+        .cropper-wrapper { border: 1px solid #ddd; padding: 15px; border-radius: 6px; background: #fff; box-shadow: 0 1px 5px rgba(0,0,0,0.05); }
+        .cropper-wrapper h3 { margin-top: 0; font-size: 1rem; color: #555; text-align: center; }
+        .img-container { width: 100%; max-height: 500px; background: #eee; overflow: hidden; }
         img { max-width: 100%; display: block; }
-        #preview-section { display: none; margin-top: 30px; border-top: 2px solid #eee; padding-top: 20px; }
-        #preview-list { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px; }
-        .preview-item { width: calc(50% - 5px); border: 1px solid #ddd; border-radius: 4px; padding: 5px; box-sizing: border-box; background: #fff; }
+        
+        #loading-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); color: white; justify-content: center; align-items: center; z-index: 1000; font-size: 1.2rem; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h1>문서 스캐너</h1>
+    <h1>다중 문서 컬러 스캐너</h1>
     
     <label for="file-input" class="btn">사진 불러오기 (여러 장 선택 가능)</label>
     <input type="file" id="file-input" accept="image/*" multiple>
 
-    <!-- 사진 자르기 및 보정 영역 -->
-    <div id="crop-area">
-        <p style="text-align: center; font-size: 0.9rem;">문서 테두리에 맞게 영역을 조절하십시오.</p>
-        <div class="img-container">
-            <img id="image-to-crop" src="">
-        </div>
-        <button id="crop-btn" class="btn btn-action">영역 자르기 및 스캔(흑백) 효과 적용</button>
-    </div>
+    <!-- 여러 장의 사진이 나열될 작업 공간 -->
+    <div id="workspace"></div>
 
-    <!-- 스캔 완료 및 PDF 생성 영역 -->
-    <div id="preview-section">
-        <h3 style="text-align: center;">스캔 완료 목록</h3>
-        <div id="preview-list"></div>
-        <button id="pdf-btn" class="btn">PDF 파일로 전환 및 저장</button>
-    </div>
+    <!-- PDF 생성 버튼 (사진을 불러왔을 때만 표시됨) -->
+    <button id="generate-pdf-btn" class="btn btn-action" style="display: none;">선택 영역을 잘라내어 PDF로 저장</button>
 </div>
 
+<!-- 처리 중 대기 화면 -->
+<div id="loading-overlay">PDF를 생성하는 중입니다...</div>
+
 <script>
-    let filesQueue = [];
-    let processedImages = [];
-    let cropper = null;
-    let currentFileIndex = 0;
-
     const fileInput = document.getElementById('file-input');
-    const cropArea = document.getElementById('crop-area');
-    const imageToCrop = document.getElementById('image-to-crop');
-    const previewSection = document.getElementById('preview-section');
-    const previewList = document.getElementById('preview-list');
+    const workspace = document.getElementById('workspace');
+    const generatePdfBtn = document.getElementById('generate-pdf-btn');
+    const loadingOverlay = document.getElementById('loading-overlay');
+    
+    let cropperInstances = []; // 활성화된 Cropper 객체들을 담을 배열
 
-    // 1. 사진 불러오기
+    // 1. 사진 여러 장 한꺼번에 불러오기
     fileInput.addEventListener('change', (e) => {
         const files = Array.from(e.target.files);
         if (files.length === 0) return;
-        
-        filesQueue = files;
-        processedImages = [];
-        currentFileIndex = 0;
-        previewList.innerHTML = '';
-        previewSection.style.display = 'none';
-        
-        loadNextImage();
-    });
 
-    // 2. 순차적으로 사진을 화면에 띄우기
-    function loadNextImage() {
-        if (currentFileIndex >= filesQueue.length) {
-            cropArea.style.display = 'none';
-            if (processedImages.length > 0) {
-                previewSection.style.display = 'block';
-            }
-            return;
-        }
+        // 기존 작업 공간 초기화
+        workspace.innerHTML = '';
+        cropperInstances = [];
+        generatePdfBtn.style.display = 'block';
 
-        const file = filesQueue[currentFileIndex];
-        const reader = new FileReader();
-        
-        reader.onload = (e) => {
-            imageToCrop.src = e.target.result;
-            cropArea.style.display = 'block';
+        files.forEach((file, index) => {
+            const reader = new FileReader();
             
-            if (cropper) {
-                cropper.destroy();
-            }
+            reader.onload = (event) => {
+                // 각 이미지를 담을 컨테이너 생성
+                const wrapper = document.createElement('div');
+                wrapper.className = 'cropper-wrapper';
+                
+                const title = document.createElement('h3');
+                title.innerText = `문서 ${index + 1}`;
+                
+                const imgContainer = document.createElement('div');
+                imgContainer.className = 'img-container';
+                
+                const imgElement = document.createElement('img');
+                imgElement.src = event.target.result;
+                
+                imgContainer.appendChild(imgElement);
+                wrapper.appendChild(title);
+                wrapper.appendChild(imgContainer);
+                workspace.appendChild(wrapper);
+
+                // 이미지가 로드된 후 해당 이미지에 Cropper 인스턴스 생성
+                const cropper = new Cropper(imgElement, {
+                    viewMode: 1,
+                    autoCropArea: 0.9,
+                    background: false,
+                    zoomable: false
+                });
+                
+                cropperInstances.push(cropper);
+            };
             
-            // Cropper.js 초기화
-            cropper = new Cropper(imageToCrop, {
-                viewMode: 1,
-                autoCropArea: 0.9,
-                background: false,
-                zoomable: false
-            });
-        };
-        reader.readAsDataURL(file);
-    }
-
-    // 3. 자르기 및 흑백 처리
-    document.getElementById('crop-btn').addEventListener('click', () => {
-        if (!cropper) return;
-        
-        // 사용자가 지정한 영역만 잘라내기
-        const croppedCanvas = cropper.getCroppedCanvas();
-        
-        // 흑백(고대비) 처리 로직
-        const ctx = croppedCanvas.getContext('2d');
-        const imgData = ctx.getImageData(0, 0, croppedCanvas.width, croppedCanvas.height);
-        const data = imgData.data;
-        
-        for (let i = 0; i < data.length; i += 4) {
-            const brightness = (data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114);
-            // 텍스트는 더 검게, 배경은 더 하얗게 처리 (임계값 140 기준)
-            const value = brightness > 140 ? 255 : 0; 
-            data[i] = value;     // R
-            data[i + 1] = value; // G
-            data[i + 2] = value; // B
-        }
-        ctx.putImageData(imgData, 0, 0);
-
-        // 결과물을 데이터 URL로 저장
-        const finalDataUrl = croppedCanvas.toDataURL('image/jpeg', 0.85);
-        processedImages.push(finalDataUrl);
-
-        // 하단 미리보기 목록에 추가
-        const div = document.createElement('div');
-        div.className = 'preview-item';
-        div.innerHTML = `<img src="${finalDataUrl}">`;
-        previewList.appendChild(div);
-
-        // 다음 사진으로 이동
-        currentFileIndex++;
-        loadNextImage();
-    });
-
-    // 4. PDF 변환 및 저장
-    document.getElementById('pdf-btn').addEventListener('click', () => {
-        if (processedImages.length === 0) return;
-
-        const { jsPDF } = window.jspdf;
-        const pdf = new jsPDF('p', 'mm', 'a4');
-        const pdfWidth = pdf.internal.pageSize.getWidth();
-        const pdfHeight = pdf.internal.pageSize.getHeight();
-
-        processedImages.forEach((imgData, index) => {
-            if (index > 0) pdf.addPage();
-            
-            const imgProps = pdf.getImageProperties(imgData);
-            const ratio = imgProps.width / imgProps.height;
-            
-            let renderWidth = pdfWidth;
-            let renderHeight = pdfWidth / ratio;
-            
-            if (renderHeight > pdfHeight) {
-                renderHeight = pdfHeight;
-                renderWidth = pdfHeight * ratio;
-            }
-            
-            // 중앙 정렬
-            const x = (pdfWidth - renderWidth) / 2;
-            const y = (pdfHeight - renderHeight) / 2;
-            
-            pdf.addImage(imgData, 'JPEG', x, y, renderWidth, renderHeight);
+            reader.readAsDataURL(file);
         });
+    });
 
-        pdf.save('scanned_document.pdf');
+    // 2. 모든 설정된 영역을 컬러로 잘라내어 PDF로 변환
+    generatePdfBtn.addEventListener('click', () => {
+        if (cropperInstances.length === 0) return;
+        
+        loadingOverlay.style.display = 'flex'; // 대기 화면 표시
+
+        // UI 업데이트를 위해 약간의 지연 후 실행 (동기 처리로 인한 브라우저 멈춤 방지)
+        setTimeout(() => {
+            const { jsPDF } = window.jspdf;
+            const pdf = new jsPDF('p', 'mm', 'a4');
+            const pdfWidth = pdf.internal.pageSize.getWidth();
+            const pdfHeight = pdf.internal.pageSize.getHeight();
+
+            cropperInstances.forEach((cropper, index) => {
+                // 사용자가 지정한 영역의 캔버스 획득 (색상 변환 없음)
+                const croppedCanvas = cropper.getCroppedCanvas();
+                
+                // 컬러 JPEG 형태로 데이터 추출
+                const imgData = croppedCanvas.toDataURL('image/jpeg', 0.9);
+
+                if (index > 0) {
+                    pdf.addPage();
+                }
+
+                // PDF 페이지 크기에 맞게 이미지 비율 조정
+                const imgProps = pdf.getImageProperties(imgData);
+                const ratio = imgProps.width / imgProps.height;
+                
+                let renderWidth = pdfWidth;
+                let renderHeight = pdfWidth / ratio;
+                
+                // 세로 길이가 A4를 초과할 경우 세로 길이에 맞춤
+                if (renderHeight > pdfHeight) {
+                    renderHeight = pdfHeight;
+                    renderWidth = pdfHeight * ratio;
+                }
+                
+                // 페이지 중앙 정렬
+                const x = (pdfWidth - renderWidth) / 2;
+                const y = (pdfHeight - renderHeight) / 2;
+                
+                pdf.addImage(imgData, 'JPEG', x, y, renderWidth, renderHeight);
+            });
+
+            // 최종 PDF 다운로드
+            pdf.save('color_scanned_document.pdf');
+            loadingOverlay.style.display = 'none'; // 대기 화면 숨김
+        }, 100);
     });
 </script>
 </body>
