@@ -26,7 +26,7 @@
         .doc-wrapper h3 { margin-top: 0; font-size: 1rem; color: #555; text-align: center; }
         .remove-btn { position: absolute; top: 10px; right: 10px; background: #dc3545; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 0.8rem; z-index: 10; }
         
-        .editor-container { position: relative; display: inline-block; overflow: hidden; background: #eee; line-height: 0; touch-action: none; }
+        .editor-container { position: relative; display: inline-block; overflow: hidden; background: #eee; line-height: 0; touch-action: none; max-width: 100%; }
         .editor-container img { max-width: 100%; height: auto; display: block; margin: 0; pointer-events: none; user-select: none; -webkit-user-drag: none; }
         .editor-svg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: auto; }
         .poly-line { fill: rgba(0, 123, 255, 0.2); stroke: #007bff; stroke-width: 2; pointer-events: none; }
@@ -180,18 +180,45 @@
         e.target.value = ''; 
     });
 
+    function sortCorners(pts) {
+        pts.sort((a, b) => a.y - b.y);
+        let top = pts.slice(0, 2).sort((a, b) => a.x - b.x);
+        let bottom = pts.slice(2, 4).sort((a, b) => b.x - a.x);
+        return [top[0], top[1], bottom[0], bottom[1]];
+    }
+
+    // 🌟 가상 캔버스를 활용한 정밀 테두리 감지 로직 
     function detect4Corners(imgElement) {
-        let w = imgElement.naturalWidth;
-        let h = imgElement.naturalHeight;
-        let fallbackPoints = [{x: w*0.1, y: h*0.1}, {x: w*0.9, y: h*0.1}, {x: w*0.9, y: h*0.9}, {x: w*0.1, y: h*0.9}];
+        let natW = imgElement.naturalWidth;
+        let natH = imgElement.naturalHeight;
+        let fallbackPoints = [{x: natW*0.1, y: natH*0.1}, {x: natW*0.9, y: natH*0.1}, {x: natW*0.9, y: natH*0.9}, {x: natW*0.1, y: natH*0.9}];
 
         try {
-            let src = cv.imread(imgElement);
+            // 연산 속도와 브라우저 렌더링 충돌을 막기 위해 800px 사이즈로 축소하여 분석
+            const tempCanvas = document.createElement('canvas');
+            const DETECT_DIM = 800;
+            let scale = 1;
+            let procW = natW, procH = natH;
+            
+            if (natW > DETECT_DIM || natH > DETECT_DIM) {
+                scale = DETECT_DIM / Math.max(natW, natH);
+                procW = Math.round(natW * scale);
+                procH = Math.round(natH * scale);
+            }
+            
+            tempCanvas.width = procW;
+            tempCanvas.height = procH;
+            const tCtx = tempCanvas.getContext('2d');
+            tCtx.drawImage(imgElement, 0, 0, procW, procH);
+
+            let src = cv.imread(tempCanvas);
             if (src.empty()) { src.delete(); return fallbackPoints; }
 
             let gray = new cv.Mat();
             cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY, 0);
             cv.GaussianBlur(gray, gray, new cv.Size(5, 5), 0, 0, cv.BORDER_DEFAULT);
+            
+            let edges = new cv.Mat();
             cv.Canny(gray, edges, 75, 200);
             
             let contours = new cv.MatVector();
@@ -204,7 +231,7 @@
             for (let i = 0; i < contours.size(); ++i) {
                 let cnt = contours.get(i);
                 let area = cv.contourArea(cnt);
-                if (area > (w * h * 0.05)) { 
+                if (area > (procW * procH * 0.05)) { 
                     let peri = cv.arcLength(cnt, true);
                     let approx = new cv.Mat();
                     cv.approxPolyDP(cnt, approx, 0.02 * peri, true);
@@ -221,7 +248,11 @@
             let points = [];
             if (bestApprox) {
                 for (let i = 0; i < 4; i++) {
-                    points.push({ x: bestApprox.data32S[i * 2], y: bestApprox.data32S[i * 2 + 1] });
+                    // 감지된 축소 좌표를 다시 원본(100%) 비율로 복구
+                    points.push({ 
+                        x: bestApprox.data32S[i * 2] / scale, 
+                        y: bestApprox.data32S[i * 2 + 1] / scale 
+                    });
                 }
                 bestApprox.delete();
             } else {
@@ -234,13 +265,6 @@
         } catch (e) {
             return fallbackPoints;
         }
-    }
-
-    function sortCorners(pts) {
-        pts.sort((a, b) => a.y - b.y);
-        let top = pts.slice(0, 2).sort((a, b) => a.x - b.x);
-        let bottom = pts.slice(2, 4).sort((a, b) => b.x - a.x);
-        return [top[0], top[1], bottom[0], bottom[1]];
     }
 
     function createEditorForImage(dataUrl) {
@@ -288,8 +312,8 @@
         
         img.onload = () => {
             setTimeout(() => {
-                // 🌟 수정 1: 비율(%) 기반의 절대 좌표계 도입
                 const originalPoints = detect4Corners(img);
+                // 모서리 좌표를 픽셀이 아닌 0.0 ~ 1.0 사이의 절대 비율(%)로 변환하여 관리
                 const normalizedPoints = originalPoints.map(p => ({ 
                     x: p.x / img.naturalWidth, 
                     y: p.y / img.naturalHeight 
@@ -327,7 +351,6 @@
                     let x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
                     let y = Math.max(0, Math.min(e.clientY - rect.top, rect.height));
                     
-                    // UI 움직임을 곧바로 비율 좌표에 업데이트
                     normalizedPoints[draggingIdx] = { x: x / cw, y: y / ch };
                     updateUI();
                 });
@@ -338,13 +361,7 @@
                 docInstances.push({
                     id: id,
                     imgElement: img,
-                    getOriginalPoints: () => {
-                        // 추출 시 원본 해상도와 절대 비율을 곱하여 좌표 복구
-                        return normalizedPoints.map(p => ({ 
-                            x: p.x * img.naturalWidth, 
-                            y: p.y * img.naturalHeight 
-                        }));
-                    }
+                    getNormalizedPoints: () => normalizedPoints
                 });
                 
                 generatePdfBtn.style.display = 'block';
@@ -370,8 +387,30 @@
             const hiddenCanvas = document.getElementById('hidden-canvas');
 
             docInstances.forEach((instance, index) => {
-                let src = cv.imread(instance.imgElement);
-                let pts = instance.getOriginalPoints(); 
+                // 🌟 가상 캔버스를 통한 해상도 최적화 (모바일 크래시 방지 및 정확한 좌표 매핑)
+                let natW = instance.imgElement.naturalWidth;
+                let natH = instance.imgElement.naturalHeight;
+                const MAX_SRC = 1600; // PDF 스캔에 최적화된 안전 해상도
+                let scaleRatio = 1;
+
+                if (natW > MAX_SRC || natH > MAX_SRC) {
+                    scaleRatio = MAX_SRC / Math.max(natW, natH);
+                    natW = Math.round(natW * scaleRatio);
+                    natH = Math.round(natH * scaleRatio);
+                }
+
+                const tempCanvas = document.createElement('canvas');
+                tempCanvas.width = natW;
+                tempCanvas.height = natH;
+                const tCtx = tempCanvas.getContext('2d');
+                tCtx.drawImage(instance.imgElement, 0, 0, natW, natH);
+
+                // CSS 렌더링 사이즈가 아닌, 안정적인 해상도로 세팅된 가상 캔버스를 읽어들임
+                let src = cv.imread(tempCanvas);
+
+                // 비율 좌표를 현재 적용된 연산 해상도에 맞게 정확히 복원
+                let normPts = instance.getNormalizedPoints();
+                let pts = normPts.map(p => ({ x: p.x * natW, y: p.y * natH }));
                 
                 let tl = pts[0], tr = pts[1], br = pts[2], bl = pts[3];
                 
@@ -383,15 +422,6 @@
                 let heightB = Math.sqrt(Math.pow(tl.x - bl.x, 2) + Math.pow(tl.y - bl.y, 2));
                 let maxHeight = Math.max(heightA, heightB);
                 
-                // 🌟 수정 2: 모바일 브라우저 캔버스 메모리 크래시 방지 방어선
-                // 해상도를 최대 1200px(A4 스캔 권장)로 제한하여 처리 속도와 안정성을 동시에 확보
-                const MAX_DIM = 1200;
-                if (maxWidth > MAX_DIM || maxHeight > MAX_DIM) {
-                    let scale = MAX_DIM / Math.max(maxWidth, maxHeight);
-                    maxWidth = Math.round(maxWidth * scale);
-                    maxHeight = Math.round(maxHeight * scale);
-                }
-                
                 let srcTri = cv.matFromArray(4, 1, cv.CV_32FC2, [tl.x, tl.y, tr.x, tr.y, br.x, br.y, bl.x, bl.y]);
                 let dstTri = cv.matFromArray(4, 1, cv.CV_32FC2, [0, 0, maxWidth, 0, maxWidth, maxHeight, 0, maxHeight]);
                 
@@ -401,13 +431,12 @@
                 let M = cv.getPerspectiveTransform(srcTri, dstTri);
                 cv.warpPerspective(src, dst, M, dsize, cv.INTER_LINEAR, cv.BORDER_CONSTANT, new cv.Scalar(255, 255, 255, 255));
                 
-                // OpenCV 행렬 즉각 보정 (대비 1.3배, 밝기 +30)
+                // 선명도 보정
                 dst.convertTo(dst, -1, 1.3, 30);
                 
                 cv.imshow('hidden-canvas', dst);
                 const finalImgData = hiddenCanvas.toDataURL('image/jpeg', 0.85);
                 
-                // 메모리 누수 방지
                 src.delete(); dst.delete(); M.delete(); srcTri.delete(); dstTri.delete();
 
                 if (index > 0) pdf.addPage();
