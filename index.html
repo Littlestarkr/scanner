@@ -22,8 +22,6 @@
         input[type="file"] { display: none; }
         
         #workspace { display: flex; flex-direction: column; gap: 30px; }
-        
-        /* 🌟 수정됨: 래퍼와 에디터 컨테이너가 1:1로 정밀하게 맞물리도록 정렬 로직 개편 */
         .doc-wrapper { border: 1px solid #ddd; padding: 15px; border-radius: 6px; background: #fff; position: relative; text-align: center; }
         .doc-wrapper h3 { margin-top: 0; font-size: 1rem; color: #555; text-align: center; }
         .remove-btn { position: absolute; top: 10px; right: 10px; background: #dc3545; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 0.8rem; z-index: 10; }
@@ -36,7 +34,6 @@
         .corner-point { fill: #007bff; stroke: white; stroke-width: 3; cursor: grab; }
         .corner-point:active { cursor: grabbing; fill: #0056b3; }
         
-        /* 카메라 관련 UI */
         #camera-section { display: none; flex-direction: column; align-items: center; justify-content: center; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000; z-index: 2000; }
         .video-container { position: relative; width: 100%; max-height: 75vh; }
         #camera-stream { width: 100%; max-height: 75vh; object-fit: contain; background: #111; cursor: crosshair; }
@@ -195,8 +192,6 @@
             let gray = new cv.Mat();
             cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY, 0);
             cv.GaussianBlur(gray, gray, new cv.Size(5, 5), 0, 0, cv.BORDER_DEFAULT);
-            
-            let edges = new cv.Mat();
             cv.Canny(gray, edges, 75, 200);
             
             let contours = new cv.MatVector();
@@ -293,23 +288,23 @@
         
         img.onload = () => {
             setTimeout(() => {
-                const cw = img.clientWidth;
-                const ch = img.clientHeight;
-                
-                if (!cw || !ch) return;
-
-                const scaleX = cw / img.naturalWidth;
-                const scaleY = ch / img.naturalHeight;
-                
+                // 🌟 수정 1: 비율(%) 기반의 절대 좌표계 도입
                 const originalPoints = detect4Corners(img);
-                const uiPoints = originalPoints.map(p => ({ x: p.x * scaleX, y: p.y * scaleY }));
+                const normalizedPoints = originalPoints.map(p => ({ 
+                    x: p.x / img.naturalWidth, 
+                    y: p.y / img.naturalHeight 
+                }));
                 
                 const updateUI = () => {
-                    const pointsStr = uiPoints.map(p => `${p.x},${p.y}`).join(" ");
+                    const cw = img.clientWidth || container.clientWidth;
+                    const ch = img.clientHeight || container.clientHeight;
+                    if (!cw || !ch) return;
+
+                    const pointsStr = normalizedPoints.map(p => `${p.x * cw},${p.y * ch}`).join(" ");
                     polygon.setAttribute('points', pointsStr);
-                    uiPoints.forEach((p, i) => {
-                        circles[i].setAttribute('cx', p.x);
-                        circles[i].setAttribute('cy', p.y);
+                    normalizedPoints.forEach((p, i) => {
+                        circles[i].setAttribute('cx', p.x * cw);
+                        circles[i].setAttribute('cy', p.y * ch);
                     });
                 };
                 
@@ -326,9 +321,14 @@
                     if (draggingIdx === -1) return;
                     e.preventDefault();
                     const rect = svg.getBoundingClientRect();
+                    const cw = img.clientWidth || container.clientWidth;
+                    const ch = img.clientHeight || container.clientHeight;
+                    
                     let x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
                     let y = Math.max(0, Math.min(e.clientY - rect.top, rect.height));
-                    uiPoints[draggingIdx] = { x, y };
+                    
+                    // UI 움직임을 곧바로 비율 좌표에 업데이트
+                    normalizedPoints[draggingIdx] = { x: x / cw, y: y / ch };
                     updateUI();
                 });
                 svg.addEventListener('pointerup', () => { draggingIdx = -1; });
@@ -339,9 +339,11 @@
                     id: id,
                     imgElement: img,
                     getOriginalPoints: () => {
-                        const currentScaleX = img.clientWidth / img.naturalWidth;
-                        const currentScaleY = img.clientHeight / img.naturalHeight;
-                        return uiPoints.map(p => ({ x: p.x / currentScaleX, y: p.y / currentScaleY }));
+                        // 추출 시 원본 해상도와 절대 비율을 곱하여 좌표 복구
+                        return normalizedPoints.map(p => ({ 
+                            x: p.x * img.naturalWidth, 
+                            y: p.y * img.naturalHeight 
+                        }));
                     }
                 });
                 
@@ -356,7 +358,6 @@
         });
     }
 
-    // 🌟 수정됨: 동기식 수학적 처리로 블랙스크린 오류 원천 차단
     generatePdfBtn.addEventListener('click', () => {
         if (docInstances.length === 0) return;
         loadingOverlay.style.display = 'flex';
@@ -382,6 +383,15 @@
                 let heightB = Math.sqrt(Math.pow(tl.x - bl.x, 2) + Math.pow(tl.y - bl.y, 2));
                 let maxHeight = Math.max(heightA, heightB);
                 
+                // 🌟 수정 2: 모바일 브라우저 캔버스 메모리 크래시 방지 방어선
+                // 해상도를 최대 1200px(A4 스캔 권장)로 제한하여 처리 속도와 안정성을 동시에 확보
+                const MAX_DIM = 1200;
+                if (maxWidth > MAX_DIM || maxHeight > MAX_DIM) {
+                    let scale = MAX_DIM / Math.max(maxWidth, maxHeight);
+                    maxWidth = Math.round(maxWidth * scale);
+                    maxHeight = Math.round(maxHeight * scale);
+                }
+                
                 let srcTri = cv.matFromArray(4, 1, cv.CV_32FC2, [tl.x, tl.y, tr.x, tr.y, br.x, br.y, bl.x, bl.y]);
                 let dstTri = cv.matFromArray(4, 1, cv.CV_32FC2, [0, 0, maxWidth, 0, maxWidth, maxHeight, 0, maxHeight]);
                 
@@ -389,16 +399,12 @@
                 let dsize = new cv.Size(maxWidth, maxHeight);
                 
                 let M = cv.getPerspectiveTransform(srcTri, dstTri);
-                
-                // 원근 변환 수행 (문서 밖의 영역은 하얀색으로 처리)
                 cv.warpPerspective(src, dst, M, dsize, cv.INTER_LINEAR, cv.BORDER_CONSTANT, new cv.Scalar(255, 255, 255, 255));
                 
-                // 🌟 OpenCV 행렬을 통한 즉각적인 선명도(대비/밝기) 보정 (alpha: 대비, beta: 밝기)
+                // OpenCV 행렬 즉각 보정 (대비 1.3배, 밝기 +30)
                 dst.convertTo(dst, -1, 1.3, 30);
                 
                 cv.imshow('hidden-canvas', dst);
-                
-                // 캔버스 필터를 거치지 않고 바로 추출하므로 비동기 블랙스크린 오류 발생 안 함
                 const finalImgData = hiddenCanvas.toDataURL('image/jpeg', 0.85);
                 
                 // 메모리 누수 방지
@@ -407,7 +413,6 @@
                 if (index > 0) pdf.addPage();
                 
                 const ratio = maxWidth / maxHeight;
-                
                 let renderWidth = pdfWidth;
                 let renderHeight = pdfWidth / ratio;
                 if (renderHeight > pdfHeight) {
