@@ -4,13 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>지능형 원근 보정(4-Point) 스캐너</title>
-    <!-- PDF 변환을 위한 jsPDF -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-    <!-- 문서 경계선 인식 및 원근 보정을 위한 OpenCV.js -->
     <script async src="https://docs.opencv.org/4.8.0/opencv.js" onload="onOpenCvReady();" type="text/javascript"></script>
     
     <style>
-        body { font-family: sans-serif; margin: 0; padding: 20px; background-color: #f4f4f4; color: #333; touch-action: pan-y; }
+        body { font-family: sans-serif; margin: 0; padding: 20px; background-color: #f4f4f4; color: #333; }
         .container { max-width: 800px; margin: auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
         h1 { text-align: center; font-size: 1.5rem; margin-bottom: 5px; }
         #cv-status { text-align: center; color: #dc3545; font-size: 0.9rem; margin-bottom: 20px; font-weight: bold; }
@@ -29,13 +27,15 @@
         .remove-btn { position: absolute; top: 10px; right: 10px; background: #dc3545; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 0.8rem; z-index: 10; }
         
         /* 4점 원근 보정 UI 컨테이너 */
-        .editor-container { position: relative; display: inline-block; width: 100%; max-width: 100%; overflow: hidden; background: #eee; text-align: center; }
-        .editor-container img { max-width: 100%; height: auto; display: block; margin: 0 auto; user-select: none; -webkit-user-drag: none; }
+        .editor-container { position: relative; display: inline-block; width: 100%; overflow: hidden; background: #eee; text-align: center; touch-action: none; /* 모바일 드래그 시 화면 스크롤 방지 */ }
+        .editor-container img { max-width: 100%; height: auto; display: block; margin: 0 auto; user-select: none; -webkit-user-drag: none; pointer-events: none; }
         .editor-svg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: auto; }
-        .poly-line { fill: rgba(0, 123, 255, 0.2); stroke: #007bff; stroke-width: 2; }
-        .corner-point { fill: #007bff; stroke: white; stroke-width: 2; cursor: pointer; }
+        .poly-line { fill: rgba(0, 123, 255, 0.2); stroke: #007bff; stroke-width: 2; pointer-events: none; }
         
-        /* 자체 카메라 모달 */
+        /* 터치 영역을 넉넉하게 확보한 꼭짓점 */
+        .corner-point { fill: #007bff; stroke: white; stroke-width: 3; cursor: grab; }
+        .corner-point:active { cursor: grabbing; fill: #0056b3; }
+        
         #camera-section { display: none; flex-direction: column; align-items: center; justify-content: center; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000; z-index: 2000; }
         .video-container { position: relative; width: 100%; max-height: 75vh; }
         #camera-stream { width: 100%; max-height: 75vh; object-fit: contain; background: #111; cursor: crosshair; }
@@ -62,12 +62,10 @@
         <button id="open-camera-btn" class="btn" style="background: #28a745;" disabled>카메라 촬영 (자동 초점)</button>
     </div>
 
-    <!-- 네 꼭짓점 조정 공간 -->
     <div id="workspace"></div>
     <button id="generate-pdf-btn" class="btn btn-action">영역 직사각형(정사각형)으로 보정 후 PDF 저장</button>
 </div>
 
-<!-- 카메라 모달 -->
 <div id="camera-section">
     <div id="cam-status">촬영된 사진: 0장</div>
     <div class="video-container" id="video-container">
@@ -85,7 +83,6 @@
     <div id="loading-msg">문서를 반듯하게 펴고 선명도를 강화하는 중입니다...</div>
 </div>
 
-<!-- 숨겨진 캔버스(처리용) -->
 <canvas id="hidden-canvas" style="display:none;"></canvas>
 
 <script>
@@ -100,8 +97,6 @@
     const generatePdfBtn = document.getElementById('generate-pdf-btn');
     const loadingOverlay = document.getElementById('loading-overlay');
     const cvStatusDisplay = document.getElementById('cv-status');
-
-    // 카메라 관련 DOM
     const cameraSection = document.getElementById('camera-section');
     const cameraStream = document.getElementById('camera-stream');
     const videoContainer = document.getElementById('video-container');
@@ -117,21 +112,15 @@
         document.getElementById('lbl-file').style.opacity = '1';
     }
 
-    // --- 카메라 촬영 및 초점(Focus) 제어 로직 ---
+    // 카메라 구동 로직
     document.getElementById('open-camera-btn').addEventListener('click', async () => {
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
             alert('카메라 기능을 지원하지 않는 브라우저입니다.');
             return;
         }
         try {
-            // 고급 초점(Focus) 옵션 요청 시도
             videoStream = await navigator.mediaDevices.getUserMedia({
-                video: { 
-                    facingMode: 'environment', 
-                    width: { ideal: 1920 }, 
-                    height: { ideal: 1080 },
-                    advanced: [{ focusMode: "continuous" }] 
-                }
+                video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 }, advanced: [{ focusMode: "continuous" }] }
             });
             cameraStream.srcObject = videoStream;
             videoTrack = videoStream.getVideoTracks()[0];
@@ -139,18 +128,16 @@
             document.getElementById('cam-status').innerText = `촬영된 사진: 0장`;
             cameraSection.style.display = 'flex';
         } catch (err) {
-            alert('카메라 접근 권한이 거부되었거나 지원되지 않습니다.\n설정을 확인해주세요.');
+            alert('카메라 접근 권한이 거부되었거나 지원되지 않습니다.');
         }
     });
 
-    // 화면 탭-투-포커스(Tap to Focus) 이벤트
     videoContainer.addEventListener('pointerdown', async (e) => {
         if (!videoTrack) return;
         const rect = cameraStream.getBoundingClientRect();
         const x = e.clientX - rect.left;
         const y = e.clientY - rect.top;
 
-        // 초점 링 애니메이션
         focusRing.style.left = `${x}px`;
         focusRing.style.top = `${y}px`;
         focusRing.style.display = 'block';
@@ -158,19 +145,15 @@
         setTimeout(() => focusRing.style.transform = 'translate(-50%, -50%) scale(1)', 50);
         setTimeout(() => focusRing.style.display = 'none', 1000);
 
-        // 하드웨어 초점 제어 시도
         try {
             const capabilities = videoTrack.getCapabilities();
             if (capabilities.focusMode && (capabilities.focusMode.includes('single-shot') || capabilities.focusMode.includes('continuous'))) {
-                // 센서 상의 좌표(0.0 ~ 1.0) 계산
                 const pointOfInterest = { x: x / rect.width, y: y / rect.height };
                 await videoTrack.applyConstraints({
                     advanced: [{ focusMode: 'single-shot', pointsOfInterest: [pointOfInterest] }]
                 });
             }
-        } catch (error) {
-            console.log("이 브라우저/기기는 수동 초점 제어를 지원하지 않습니다.", error);
-        }
+        } catch (error) {}
     });
 
     document.getElementById('snap-btn').addEventListener('click', () => {
@@ -200,57 +183,67 @@
         e.target.value = ''; 
     });
 
-    // --- OpenCV: 이미지 내 가장 큰 문서의 4꼭짓점 탐색 ---
+    // 안전한 4점 감지 로직 (실패 시 확실한 Fallback 제공)
     function detect4Corners(imgElement) {
-        let src = cv.imread(imgElement);
-        let gray = new cv.Mat();
-        cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY, 0);
-        cv.GaussianBlur(gray, gray, new cv.Size(5, 5), 0, 0, cv.BORDER_DEFAULT);
-        
-        let edges = new cv.Mat();
-        cv.Canny(gray, edges, 75, 200);
-        
-        let contours = new cv.MatVector();
-        let hierarchy = new cv.Mat();
-        cv.findContours(edges, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
-        
-        let maxArea = 0;
-        let bestApprox = null;
-        
-        for (let i = 0; i < contours.size(); ++i) {
-            let cnt = contours.get(i);
-            let area = cv.contourArea(cnt);
-            if (area > 5000) { 
-                let peri = cv.arcLength(cnt, true);
-                let approx = new cv.Mat();
-                cv.approxPolyDP(cnt, approx, 0.02 * peri, true);
-                if (approx.rows === 4 && area > maxArea) {
-                    maxArea = area;
-                    if (bestApprox) bestApprox.delete();
-                    bestApprox = approx;
-                } else {
-                    approx.delete();
+        let w = imgElement.naturalWidth;
+        let h = imgElement.naturalHeight;
+        let fallbackPoints = [{x: w*0.1, y: h*0.1}, {x: w*0.9, y: h*0.1}, {x: w*0.9, y: h*0.9}, {x: w*0.1, y: h*0.9}];
+
+        try {
+            let src = cv.imread(imgElement);
+            if (src.empty()) { src.delete(); return fallbackPoints; }
+
+            let gray = new cv.Mat();
+            cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY, 0);
+            cv.GaussianBlur(gray, gray, new cv.Size(5, 5), 0, 0, cv.BORDER_DEFAULT);
+            
+            let edges = new cv.Mat();
+            cv.Canny(gray, edges, 75, 200);
+            
+            let contours = new cv.MatVector();
+            let hierarchy = new cv.Mat();
+            cv.findContours(edges, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+            
+            let maxArea = 0;
+            let bestApprox = null;
+            
+            for (let i = 0; i < contours.size(); ++i) {
+                let cnt = contours.get(i);
+                let area = cv.contourArea(cnt);
+                // 화면 면적의 5% 이상인 객체만 문서로 간주
+                if (area > (w * h * 0.05)) { 
+                    let peri = cv.arcLength(cnt, true);
+                    let approx = new cv.Mat();
+                    cv.approxPolyDP(cnt, approx, 0.02 * peri, true);
+                    if (approx.rows === 4 && area > maxArea) {
+                        maxArea = area;
+                        if (bestApprox) bestApprox.delete();
+                        bestApprox = approx;
+                    } else {
+                        approx.delete();
+                    }
                 }
             }
-        }
-        
-        let points = [];
-        let w = src.cols, h = src.rows;
-        if (bestApprox) {
-            for (let i = 0; i < 4; i++) {
-                points.push({ x: bestApprox.data32S[i * 2], y: bestApprox.data32S[i * 2 + 1] });
+            
+            let points = [];
+            if (bestApprox) {
+                for (let i = 0; i < 4; i++) {
+                    points.push({ x: bestApprox.data32S[i * 2], y: bestApprox.data32S[i * 2 + 1] });
+                }
+                bestApprox.delete();
+            } else {
+                points = fallbackPoints;
             }
-            bestApprox.delete();
-        } else {
-            // 문서를 찾지 못한 경우 10% 여백의 기본 사각형 반환
-            points = [{x: w*0.1, y: h*0.1}, {x: w*0.9, y: h*0.1}, {x: w*0.9, y: h*0.9}, {x: w*0.1, y: h*0.9}];
+            
+            src.delete(); gray.delete(); edges.delete(); contours.delete(); hierarchy.delete();
+            return sortCorners(points);
+
+        } catch (e) {
+            console.warn("OpenCV Processing Error. Using fallback corners.");
+            return fallbackPoints;
         }
-        
-        src.delete(); gray.delete(); edges.delete(); contours.delete(); hierarchy.delete();
-        return sortCorners(points);
     }
 
-    // 꼭짓점을 시계 방향(TL, TR, BR, BL)으로 정렬
     function sortCorners(pts) {
         pts.sort((a, b) => a.y - b.y);
         let top = pts.slice(0, 2).sort((a, b) => a.x - b.x);
@@ -258,7 +251,6 @@
         return [top[0], top[1], bottom[0], bottom[1]];
     }
 
-    // --- 4점 조정 전용 편집기(UI) 생성 ---
     function createEditorForImage(dataUrl) {
         imageCounter++;
         const id = `doc-${imageCounter}`;
@@ -280,7 +272,6 @@
         const img = document.createElement('img');
         img.src = dataUrl;
         
-        // SVG 영역 (드래그 가능한 점과 선)
         const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
         svg.setAttribute('class', 'editor-svg');
         const polygon = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
@@ -290,7 +281,8 @@
         const circles = [];
         for (let i = 0; i < 4; i++) {
             const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-            circle.setAttribute('r', '12'); // 터치하기 쉽도록 크게
+            // 모바일에서 터치하기 쉽도록 점 크기를 대폭 확대
+            circle.setAttribute('r', '18'); 
             circle.setAttribute('class', 'corner-point');
             svg.appendChild(circle);
             circles.push(circle);
@@ -303,63 +295,64 @@
         wrapper.appendChild(container);
         workspace.appendChild(wrapper);
         
-        // 이미지 로딩 완료 후 좌표 설정
+        // 🌟 수정된 부분: DOM에 요소가 안착하여 폭(Width)을 할당받을 때까지 지연 처리
         img.onload = () => {
-            // 화면 렌더링 배율 계산
-            const scaleX = img.clientWidth / img.naturalWidth;
-            const scaleY = img.clientHeight / img.naturalHeight;
-            
-            // OpenCV로 원본 기준 4점 찾기
-            const originalPoints = detect4Corners(img);
-            
-            // 원본 좌표를 화면(UI) 좌표로 변환
-            const uiPoints = originalPoints.map(p => ({ x: p.x * scaleX, y: p.y * scaleY }));
-            
-            // UI 업데이트 함수
-            const updateUI = () => {
-                const pointsStr = uiPoints.map(p => `${p.x},${p.y}`).join(" ");
-                polygon.setAttribute('points', pointsStr);
-                uiPoints.forEach((p, i) => {
-                    circles[i].setAttribute('cx', p.x);
-                    circles[i].setAttribute('cy', p.y);
-                });
-            };
-            
-            updateUI();
-            
-            // 드래그 로직 (Mouse & Touch 통합 pointer events)
-            let draggingIdx = -1;
-            svg.addEventListener('pointerdown', (e) => {
-                if (e.target.tagName === 'circle') {
-                    e.preventDefault();
-                    draggingIdx = circles.indexOf(e.target);
-                }
-            });
-            svg.addEventListener('pointermove', (e) => {
-                if (draggingIdx === -1) return;
-                const rect = svg.getBoundingClientRect();
-                // 컨테이너 밖으로 나가지 않도록 제한
-                let x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
-                let y = Math.max(0, Math.min(e.clientY - rect.top, rect.height));
-                uiPoints[draggingIdx] = { x, y };
-                updateUI();
-            });
-            svg.addEventListener('pointerup', () => { draggingIdx = -1; });
-            svg.addEventListener('pointerleave', () => { draggingIdx = -1; });
+            setTimeout(() => {
+                const cw = img.clientWidth || container.clientWidth;
+                const ch = img.clientHeight || container.clientHeight;
+                
+                // 너비 계산 실패 시 방어 코드
+                if (cw === 0 || ch === 0) return;
 
-            // 저장용 객체 등록
-            docInstances.push({
-                id: id,
-                imgElement: img,
-                getOriginalPoints: () => {
-                    // 화면 좌표를 다시 원본 이미지 해상도로 변환하여 반환
-                    const currentScaleX = img.clientWidth / img.naturalWidth;
-                    const currentScaleY = img.clientHeight / img.naturalHeight;
-                    return uiPoints.map(p => ({ x: p.x / currentScaleX, y: p.y / currentScaleY }));
-                }
-            });
-            
-            generatePdfBtn.style.display = 'block';
+                const scaleX = cw / img.naturalWidth;
+                const scaleY = ch / img.naturalHeight;
+                
+                const originalPoints = detect4Corners(img);
+                const uiPoints = originalPoints.map(p => ({ x: p.x * scaleX, y: p.y * scaleY }));
+                
+                const updateUI = () => {
+                    const pointsStr = uiPoints.map(p => `${p.x},${p.y}`).join(" ");
+                    polygon.setAttribute('points', pointsStr);
+                    uiPoints.forEach((p, i) => {
+                        circles[i].setAttribute('cx', p.x);
+                        circles[i].setAttribute('cy', p.y);
+                    });
+                };
+                
+                updateUI();
+                
+                let draggingIdx = -1;
+                svg.addEventListener('pointerdown', (e) => {
+                    if (e.target.tagName === 'circle') {
+                        e.preventDefault();
+                        draggingIdx = circles.indexOf(e.target);
+                    }
+                });
+                svg.addEventListener('pointermove', (e) => {
+                    if (draggingIdx === -1) return;
+                    e.preventDefault();
+                    const rect = svg.getBoundingClientRect();
+                    let x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+                    let y = Math.max(0, Math.min(e.clientY - rect.top, rect.height));
+                    uiPoints[draggingIdx] = { x, y };
+                    updateUI();
+                });
+                svg.addEventListener('pointerup', () => { draggingIdx = -1; });
+                svg.addEventListener('pointerleave', () => { draggingIdx = -1; });
+                svg.addEventListener('pointercancel', () => { draggingIdx = -1; });
+
+                docInstances.push({
+                    id: id,
+                    imgElement: img,
+                    getOriginalPoints: () => {
+                        const currentScaleX = (img.clientWidth || container.clientWidth) / img.naturalWidth;
+                        const currentScaleY = (img.clientHeight || container.clientHeight) / img.naturalHeight;
+                        return uiPoints.map(p => ({ x: p.x / currentScaleX, y: p.y / currentScaleY }));
+                    }
+                });
+                
+                generatePdfBtn.style.display = 'block';
+            }, 150); // DOM 렌더링을 기다리는 0.15초 지연
         };
         
         removeBtn.addEventListener('click', () => {
@@ -369,7 +362,6 @@
         });
     }
 
-    // --- PDF 변환: 기하학적 원근 보정(Perspective Warp) 및 선명도 필터 ---
     generatePdfBtn.addEventListener('click', () => {
         if (docInstances.length === 0) return;
         loadingOverlay.style.display = 'flex';
@@ -384,11 +376,10 @@
 
             docInstances.forEach((instance, index) => {
                 let src = cv.imread(instance.imgElement);
-                let pts = instance.getOriginalPoints(); // 사용자가 조정한 최종 좌표
+                let pts = instance.getOriginalPoints(); 
                 
                 let tl = pts[0], tr = pts[1], br = pts[2], bl = pts[3];
                 
-                // 보정 후 생성될 반듯한 직사각형의 가로, 세로 길이 계산 (최대치 기준)
                 let widthA = Math.sqrt(Math.pow(br.x - bl.x, 2) + Math.pow(br.y - bl.y, 2));
                 let widthB = Math.sqrt(Math.pow(tr.x - tl.x, 2) + Math.pow(tr.y - tl.y, 2));
                 let maxWidth = Math.max(widthA, widthB);
@@ -397,40 +388,34 @@
                 let heightB = Math.sqrt(Math.pow(tl.x - bl.x, 2) + Math.pow(tl.y - bl.y, 2));
                 let maxHeight = Math.max(heightA, heightB);
                 
-                // 원본 4점 좌표와 변환될 목표 4점 좌표 매핑
                 let srcTri = cv.matFromArray(4, 1, cv.CV_32FC2, [tl.x, tl.y, tr.x, tr.y, br.x, br.y, bl.x, bl.y]);
                 let dstTri = cv.matFromArray(4, 1, cv.CV_32FC2, [0, 0, maxWidth, 0, maxWidth, maxHeight, 0, maxHeight]);
                 
                 let dst = new cv.Mat();
                 let dsize = new cv.Size(maxWidth, maxHeight);
                 
-                // 기하학적 변환 행렬 도출 및 실행 (원근 왜곡 펴기)
                 let M = cv.getPerspectiveTransform(srcTri, dstTri);
                 cv.warpPerspective(src, dst, M, dsize, cv.INTER_LINEAR, cv.BORDER_CONSTANT, new cv.Scalar());
                 
-                // OpenCV 결과를 숨겨진 캔버스에 렌더링
                 cv.imshow('hidden-canvas', dst);
                 
-                // 텍스트를 선명하게 만들기 위한 Canvas 필터 재적용
-                // 그려진 이미지를 다시 가져와서 필터 먹여 다시 그림
                 const imgDataSrc = hiddenCanvas.toDataURL('image/jpeg', 1.0);
                 const tempImg = new Image();
                 tempImg.src = imgDataSrc;
                 
-                // 메모리 해제
                 src.delete(); dst.delete(); M.delete(); srcTri.delete(); dstTri.delete();
 
-                // 비동기 처리 문제 방지를 위해 동기적 흐름 유도 (이미지 로드는 dataURL이라 즉시 완료됨)
-                ctx.clearRect(0, 0, hiddenCanvas.width, hiddenCanvas.height);
+                hiddenCanvas.width = maxWidth;
+                hiddenCanvas.height = maxHeight;
+                ctx.clearRect(0, 0, maxWidth, maxHeight);
                 ctx.filter = 'contrast(140%) brightness(110%) saturate(110%)'; 
-                ctx.drawImage(tempImg, 0, 0);
+                ctx.drawImage(tempImg, 0, 0, maxWidth, maxHeight);
                 
                 const finalImgData = hiddenCanvas.toDataURL('image/jpeg', 0.85);
 
                 if (index > 0) pdf.addPage();
                 
-                const imgProps = pdf.getImageProperties(finalImgData);
-                const ratio = imgProps.width / imgProps.height;
+                const ratio = maxWidth / maxHeight;
                 
                 let renderWidth = pdfWidth;
                 let renderHeight = pdfWidth / ratio;
@@ -446,7 +431,7 @@
 
             pdf.save('perspective_corrected_document.pdf');
             loadingOverlay.style.display = 'none';
-        }, 100);
+        }, 150);
     });
 </script>
 </body>
