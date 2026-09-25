@@ -14,7 +14,6 @@
         .container { max-width: 800px; margin: auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
         h1 { text-align: center; font-size: 1.5rem; margin-bottom: 20px; }
         
-        /* 버튼 스타일 */
         .btn-group { display: flex; gap: 10px; margin-bottom: 20px; }
         .btn { flex: 1; padding: 12px 15px; background: #333; color: white; border: none; border-radius: 4px; cursor: pointer; text-align: center; font-size: 1rem; font-weight: bold; }
         .btn:hover { background: #555; }
@@ -22,7 +21,6 @@
         .btn-action:hover { background: #004494; }
         input[type="file"] { display: none; }
         
-        /* 작업 공간 스타일 */
         #workspace { display: flex; flex-direction: column; gap: 30px; }
         .cropper-wrapper { border: 1px solid #ddd; padding: 15px; border-radius: 6px; background: #fff; position: relative; }
         .cropper-wrapper h3 { margin-top: 0; font-size: 1rem; color: #555; text-align: center; }
@@ -30,7 +28,6 @@
         img { max-width: 100%; display: block; }
         .remove-btn { position: absolute; top: 10px; right: 10px; background: #dc3545; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 0.8rem; }
         
-        /* 자체 카메라 UI 스타일 */
         #camera-section { display: none; flex-direction: column; align-items: center; justify-content: center; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000; z-index: 2000; }
         #camera-stream { width: 100%; max-height: 75vh; object-fit: contain; background: #111; }
         .camera-controls { display: flex; gap: 20px; padding: 20px; width: 100%; justify-content: center; box-sizing: border-box; }
@@ -48,18 +45,16 @@
     <h1>다중 연속 촬영 & 스캐너</h1>
     
     <div class="btn-group">
-        <label for="file-input" class="btn">갤러리에서 불러오기</label>
+        <!-- 모바일 환경에서 갤러리 또는 기본 카메라 앱을 호출할 수 있는 대체 수단 제공 -->
+        <label for="file-input" class="btn">갤러리/기본 카메라로 촬영</label>
         <input type="file" id="file-input" accept="image/*" multiple>
-        <button id="open-camera-btn" class="btn" style="background: #28a745;">카메라 연속 촬영</button>
+        <button id="open-camera-btn" class="btn" style="background: #28a745;">웹 카메라 연속 촬영</button>
     </div>
 
-    <!-- 이미지 테두리 조정 작업 공간 -->
     <div id="workspace"></div>
-
     <button id="generate-pdf-btn" class="btn btn-action">선택 영역 스캔 및 PDF 저장</button>
 </div>
 
-<!-- 카메라 모달 화면 -->
 <div id="camera-section">
     <div id="cam-status">촬영된 사진: 0장</div>
     <video id="camera-stream" autoplay playsinline></video>
@@ -69,7 +64,6 @@
     </div>
 </div>
 
-<!-- 처리 중 대기 화면 -->
 <div id="loading-overlay">
     <div>문서를 선명하게 보정하고 PDF를 생성하는 중입니다...</div>
 </div>
@@ -79,7 +73,6 @@
     const generatePdfBtn = document.getElementById('generate-pdf-btn');
     const loadingOverlay = document.getElementById('loading-overlay');
     
-    // 카메라 관련 요소
     const cameraSection = document.getElementById('camera-section');
     const cameraStream = document.getElementById('camera-stream');
     const snapBtn = document.getElementById('snap-btn');
@@ -91,7 +84,6 @@
     let tempCapturedImages = [];
     let imageCounter = 0;
 
-    // --- 1. 갤러리에서 파일 불러오기 ---
     document.getElementById('file-input').addEventListener('change', (e) => {
         const files = Array.from(e.target.files);
         if (files.length === 0) return;
@@ -101,22 +93,38 @@
             reader.onload = (event) => addImageToWorkspace(event.target.result);
             reader.readAsDataURL(file);
         });
-        e.target.value = ''; // 동일 파일 재선택 허용
+        e.target.value = ''; 
     });
 
-    // --- 2. 브라우저 내부 카메라 구동 및 연속 촬영 ---
+    // 카메라 권한 요청 및 예외 처리 로직 강화
     document.getElementById('open-camera-btn').addEventListener('click', async () => {
+        // 1. 브라우저의 API 지원 여부 확인 (HTTPS 환경 검증 포함)
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            alert('현재 브라우저 환경에서는 카메라를 직접 제어할 수 없습니다.\n1. 주소창이 https:// 로 시작하는지 확인해 주십시오.\n2. 지원되지 않는 브라우저일 경우 좌측의 [갤러리/기본 카메라로 촬영] 버튼을 이용해 주십시오.');
+            return;
+        }
+
         try {
-            // 후면 카메라(environment) 고해상도 요청
+            // 2. 카메라 권한 요청 팝업 발생 지점
             videoStream = await navigator.mediaDevices.getUserMedia({
                 video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } }
             });
+            
+            // 권한이 승인되면 스트림 연결
             cameraStream.srcObject = videoStream;
             tempCapturedImages = [];
             updateCamStatus();
             cameraSection.style.display = 'flex';
+            
         } catch (err) {
-            alert('카메라 접근 권한이 없거나 지원되지 않는 브라우저입니다.');
+            // 3. 거절 사유에 따른 상세 안내
+            if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+                alert('카메라 접근 권한이 거부되었습니다.\n\n주소창 좌측의 자물쇠(또는 설정) 아이콘을 눌러 카메라 권한을 "허용"으로 변경한 후 다시 시도해 주십시오.');
+            } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+                alert('기기에서 카메라 렌즈를 찾을 수 없습니다.');
+            } else {
+                alert(`카메라 실행 중 오류가 발생했습니다: ${err.message}`);
+            }
         }
     });
 
@@ -128,19 +136,15 @@
         const ctx = canvas.getContext('2d');
         ctx.drawImage(cameraStream, 0, 0, canvas.width, canvas.height);
         
-        // 데이터 URL로 변환하여 임시 저장
         tempCapturedImages.push(canvas.toDataURL('image/jpeg', 0.9));
         updateCamStatus();
     });
 
     doneBtn.addEventListener('click', () => {
-        // 카메라 종료 및 비디오 스트림 해제
         if (videoStream) {
             videoStream.getTracks().forEach(track => track.stop());
         }
         cameraSection.style.display = 'none';
-        
-        // 촬영된 사진들을 워크스페이스에 추가
         tempCapturedImages.forEach(dataUrl => addImageToWorkspace(dataUrl));
     });
 
@@ -148,7 +152,6 @@
         camStatus.innerText = `촬영된 사진: ${tempCapturedImages.length}장`;
     }
 
-    // --- 3. 작업 공간(Workspace)에 이미지 및 Cropper 추가 ---
     function addImageToWorkspace(dataUrl) {
         imageCounter++;
         const wrapperId = `cropper-wrapper-${imageCounter}`;
@@ -183,9 +186,7 @@
             zoomable: false
         });
         
-        // 객체 관리를 위해 배열에 저장
-        const instanceObj = { id: wrapperId, cropper: cropper };
-        cropperInstances.push(instanceObj);
+        cropperInstances.push({ id: wrapperId, cropper: cropper });
         
         removeBtn.addEventListener('click', () => {
             cropper.destroy();
@@ -201,7 +202,6 @@
         generatePdfBtn.style.display = cropperInstances.length > 0 ? 'block' : 'none';
     }
 
-    // --- 4. 테두리 자르기, 선명도 보정 및 PDF 변환 ---
     generatePdfBtn.addEventListener('click', () => {
         if (cropperInstances.length === 0) return;
         loadingOverlay.style.display = 'flex';
@@ -214,18 +214,14 @@
 
             cropperInstances.forEach((instance, index) => {
                 const croppedCanvas = instance.cropper.getCroppedCanvas();
-                
-                // 선명도 보정을 위한 임시 캔버스 생성
                 const enhancedCanvas = document.createElement('canvas');
                 enhancedCanvas.width = croppedCanvas.width;
                 enhancedCanvas.height = croppedCanvas.height;
                 const ctx = enhancedCanvas.getContext('2d');
                 
-                // [선명도 보정 핵심 로직] 명암비(Contrast)를 높이고 밝기를 조정하여 글씨를 뚜렷하게 만듦
                 ctx.filter = 'contrast(135%) brightness(105%) saturate(110%)';
                 ctx.drawImage(croppedCanvas, 0, 0);
 
-                // 보정된 캔버스를 이미지 데이터로 추출
                 const imgData = enhancedCanvas.toDataURL('image/jpeg', 0.85);
 
                 if (index > 0) pdf.addPage();
