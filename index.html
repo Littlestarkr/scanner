@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>다중 문서 컬러 스캐너</title>
+    <title>다중 연속 촬영 및 고화질 컬러 스캐너</title>
     <!-- 영역 선택을 위한 Cropper.js -->
     <link href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
@@ -13,141 +13,242 @@
         body { font-family: sans-serif; margin: 0; padding: 20px; background-color: #f4f4f4; color: #333; }
         .container { max-width: 800px; margin: auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
         h1 { text-align: center; font-size: 1.5rem; margin-bottom: 20px; }
-        input[type="file"] { display: none; }
-        .btn { display: inline-block; padding: 12px 15px; background: #333; color: white; border: none; border-radius: 4px; cursor: pointer; text-align: center; width: 100%; box-sizing: border-box; margin-bottom: 15px; font-size: 1rem; font-weight: bold; }
-        .btn:hover { background: #555; }
-        .btn-action { background: #0056b3; margin-top: 20px; }
-        .btn-action:hover { background: #004494; }
         
-        #workspace { display: flex; flex-direction: column; gap: 30px; margin-top: 20px; }
-        .cropper-wrapper { border: 1px solid #ddd; padding: 15px; border-radius: 6px; background: #fff; box-shadow: 0 1px 5px rgba(0,0,0,0.05); }
+        /* 버튼 스타일 */
+        .btn-group { display: flex; gap: 10px; margin-bottom: 20px; }
+        .btn { flex: 1; padding: 12px 15px; background: #333; color: white; border: none; border-radius: 4px; cursor: pointer; text-align: center; font-size: 1rem; font-weight: bold; }
+        .btn:hover { background: #555; }
+        .btn-action { background: #0056b3; width: 100%; margin-top: 20px; display: none; }
+        .btn-action:hover { background: #004494; }
+        input[type="file"] { display: none; }
+        
+        /* 작업 공간 스타일 */
+        #workspace { display: flex; flex-direction: column; gap: 30px; }
+        .cropper-wrapper { border: 1px solid #ddd; padding: 15px; border-radius: 6px; background: #fff; position: relative; }
         .cropper-wrapper h3 { margin-top: 0; font-size: 1rem; color: #555; text-align: center; }
         .img-container { width: 100%; max-height: 500px; background: #eee; overflow: hidden; }
         img { max-width: 100%; display: block; }
+        .remove-btn { position: absolute; top: 10px; right: 10px; background: #dc3545; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 0.8rem; }
         
-        #loading-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); color: white; justify-content: center; align-items: center; z-index: 1000; font-size: 1.2rem; }
+        /* 자체 카메라 UI 스타일 */
+        #camera-section { display: none; flex-direction: column; align-items: center; justify-content: center; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000; z-index: 2000; }
+        #camera-stream { width: 100%; max-height: 75vh; object-fit: contain; background: #111; }
+        .camera-controls { display: flex; gap: 20px; padding: 20px; width: 100%; justify-content: center; box-sizing: border-box; }
+        .cam-btn { padding: 15px 25px; border-radius: 30px; font-weight: bold; font-size: 1.1rem; cursor: pointer; border: none; }
+        #snap-btn { background: #fff; color: #000; flex: 1; max-width: 200px; }
+        #done-btn { background: #28a745; color: #fff; flex: 1; max-width: 200px; }
+        #cam-status { color: #fff; position: absolute; top: 20px; font-size: 1.2rem; font-weight: bold; }
+        
+        #loading-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); color: white; justify-content: center; align-items: center; z-index: 3000; font-size: 1.2rem; flex-direction: column; gap: 15px; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h1>다중 문서 컬러 스캐너</h1>
+    <h1>다중 연속 촬영 & 스캐너</h1>
     
-    <label for="file-input" class="btn">사진 불러오기 (여러 장 선택 가능)</label>
-    <input type="file" id="file-input" accept="image/*" multiple>
+    <div class="btn-group">
+        <label for="file-input" class="btn">갤러리에서 불러오기</label>
+        <input type="file" id="file-input" accept="image/*" multiple>
+        <button id="open-camera-btn" class="btn" style="background: #28a745;">카메라 연속 촬영</button>
+    </div>
 
-    <!-- 여러 장의 사진이 나열될 작업 공간 -->
+    <!-- 이미지 테두리 조정 작업 공간 -->
     <div id="workspace"></div>
 
-    <!-- PDF 생성 버튼 (사진을 불러왔을 때만 표시됨) -->
-    <button id="generate-pdf-btn" class="btn btn-action" style="display: none;">선택 영역을 잘라내어 PDF로 저장</button>
+    <button id="generate-pdf-btn" class="btn btn-action">선택 영역 스캔 및 PDF 저장</button>
+</div>
+
+<!-- 카메라 모달 화면 -->
+<div id="camera-section">
+    <div id="cam-status">촬영된 사진: 0장</div>
+    <video id="camera-stream" autoplay playsinline></video>
+    <div class="camera-controls">
+        <button id="snap-btn" class="cam-btn">📸 사진 찍기</button>
+        <button id="done-btn" class="cam-btn">✔️ 촬영 완료</button>
+    </div>
 </div>
 
 <!-- 처리 중 대기 화면 -->
-<div id="loading-overlay">PDF를 생성하는 중입니다...</div>
+<div id="loading-overlay">
+    <div>문서를 선명하게 보정하고 PDF를 생성하는 중입니다...</div>
+</div>
 
 <script>
-    const fileInput = document.getElementById('file-input');
     const workspace = document.getElementById('workspace');
     const generatePdfBtn = document.getElementById('generate-pdf-btn');
     const loadingOverlay = document.getElementById('loading-overlay');
     
-    let cropperInstances = []; // 활성화된 Cropper 객체들을 담을 배열
+    // 카메라 관련 요소
+    const cameraSection = document.getElementById('camera-section');
+    const cameraStream = document.getElementById('camera-stream');
+    const snapBtn = document.getElementById('snap-btn');
+    const doneBtn = document.getElementById('done-btn');
+    const camStatus = document.getElementById('cam-status');
+    
+    let cropperInstances = []; 
+    let videoStream = null;
+    let tempCapturedImages = [];
+    let imageCounter = 0;
 
-    // 1. 사진 여러 장 한꺼번에 불러오기
-    fileInput.addEventListener('change', (e) => {
+    // --- 1. 갤러리에서 파일 불러오기 ---
+    document.getElementById('file-input').addEventListener('change', (e) => {
         const files = Array.from(e.target.files);
         if (files.length === 0) return;
-
-        // 기존 작업 공간 초기화
-        workspace.innerHTML = '';
-        cropperInstances = [];
-        generatePdfBtn.style.display = 'block';
-
-        files.forEach((file, index) => {
+        
+        files.forEach(file => {
             const reader = new FileReader();
-            
-            reader.onload = (event) => {
-                // 각 이미지를 담을 컨테이너 생성
-                const wrapper = document.createElement('div');
-                wrapper.className = 'cropper-wrapper';
-                
-                const title = document.createElement('h3');
-                title.innerText = `문서 ${index + 1}`;
-                
-                const imgContainer = document.createElement('div');
-                imgContainer.className = 'img-container';
-                
-                const imgElement = document.createElement('img');
-                imgElement.src = event.target.result;
-                
-                imgContainer.appendChild(imgElement);
-                wrapper.appendChild(title);
-                wrapper.appendChild(imgContainer);
-                workspace.appendChild(wrapper);
-
-                // 이미지가 로드된 후 해당 이미지에 Cropper 인스턴스 생성
-                const cropper = new Cropper(imgElement, {
-                    viewMode: 1,
-                    autoCropArea: 0.9,
-                    background: false,
-                    zoomable: false
-                });
-                
-                cropperInstances.push(cropper);
-            };
-            
+            reader.onload = (event) => addImageToWorkspace(event.target.result);
             reader.readAsDataURL(file);
         });
+        e.target.value = ''; // 동일 파일 재선택 허용
     });
 
-    // 2. 모든 설정된 영역을 컬러로 잘라내어 PDF로 변환
+    // --- 2. 브라우저 내부 카메라 구동 및 연속 촬영 ---
+    document.getElementById('open-camera-btn').addEventListener('click', async () => {
+        try {
+            // 후면 카메라(environment) 고해상도 요청
+            videoStream = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } }
+            });
+            cameraStream.srcObject = videoStream;
+            tempCapturedImages = [];
+            updateCamStatus();
+            cameraSection.style.display = 'flex';
+        } catch (err) {
+            alert('카메라 접근 권한이 없거나 지원되지 않는 브라우저입니다.');
+        }
+    });
+
+    snapBtn.addEventListener('click', () => {
+        if (!videoStream) return;
+        const canvas = document.createElement('canvas');
+        canvas.width = cameraStream.videoWidth;
+        canvas.height = cameraStream.videoHeight;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(cameraStream, 0, 0, canvas.width, canvas.height);
+        
+        // 데이터 URL로 변환하여 임시 저장
+        tempCapturedImages.push(canvas.toDataURL('image/jpeg', 0.9));
+        updateCamStatus();
+    });
+
+    doneBtn.addEventListener('click', () => {
+        // 카메라 종료 및 비디오 스트림 해제
+        if (videoStream) {
+            videoStream.getTracks().forEach(track => track.stop());
+        }
+        cameraSection.style.display = 'none';
+        
+        // 촬영된 사진들을 워크스페이스에 추가
+        tempCapturedImages.forEach(dataUrl => addImageToWorkspace(dataUrl));
+    });
+
+    function updateCamStatus() {
+        camStatus.innerText = `촬영된 사진: ${tempCapturedImages.length}장`;
+    }
+
+    // --- 3. 작업 공간(Workspace)에 이미지 및 Cropper 추가 ---
+    function addImageToWorkspace(dataUrl) {
+        imageCounter++;
+        const wrapperId = `cropper-wrapper-${imageCounter}`;
+        
+        const wrapper = document.createElement('div');
+        wrapper.className = 'cropper-wrapper';
+        wrapper.id = wrapperId;
+        
+        const title = document.createElement('h3');
+        title.innerText = `문서 ${imageCounter}`;
+        
+        const removeBtn = document.createElement('button');
+        removeBtn.className = 'remove-btn';
+        removeBtn.innerText = '삭제';
+        
+        const imgContainer = document.createElement('div');
+        imgContainer.className = 'img-container';
+        
+        const imgElement = document.createElement('img');
+        imgElement.src = dataUrl;
+        
+        imgContainer.appendChild(imgElement);
+        wrapper.appendChild(title);
+        wrapper.appendChild(removeBtn);
+        wrapper.appendChild(imgContainer);
+        workspace.appendChild(wrapper);
+
+        const cropper = new Cropper(imgElement, {
+            viewMode: 1,
+            autoCropArea: 0.9,
+            background: false,
+            zoomable: false
+        });
+        
+        // 객체 관리를 위해 배열에 저장
+        const instanceObj = { id: wrapperId, cropper: cropper };
+        cropperInstances.push(instanceObj);
+        
+        removeBtn.addEventListener('click', () => {
+            cropper.destroy();
+            wrapper.remove();
+            cropperInstances = cropperInstances.filter(inst => inst.id !== wrapperId);
+            togglePdfButton();
+        });
+
+        togglePdfButton();
+    }
+
+    function togglePdfButton() {
+        generatePdfBtn.style.display = cropperInstances.length > 0 ? 'block' : 'none';
+    }
+
+    // --- 4. 테두리 자르기, 선명도 보정 및 PDF 변환 ---
     generatePdfBtn.addEventListener('click', () => {
         if (cropperInstances.length === 0) return;
-        
-        loadingOverlay.style.display = 'flex'; // 대기 화면 표시
+        loadingOverlay.style.display = 'flex';
 
-        // UI 업데이트를 위해 약간의 지연 후 실행 (동기 처리로 인한 브라우저 멈춤 방지)
         setTimeout(() => {
             const { jsPDF } = window.jspdf;
             const pdf = new jsPDF('p', 'mm', 'a4');
             const pdfWidth = pdf.internal.pageSize.getWidth();
             const pdfHeight = pdf.internal.pageSize.getHeight();
 
-            cropperInstances.forEach((cropper, index) => {
-                // 사용자가 지정한 영역의 캔버스 획득 (색상 변환 없음)
-                const croppedCanvas = cropper.getCroppedCanvas();
+            cropperInstances.forEach((instance, index) => {
+                const croppedCanvas = instance.cropper.getCroppedCanvas();
                 
-                // 컬러 JPEG 형태로 데이터 추출
-                const imgData = croppedCanvas.toDataURL('image/jpeg', 0.9);
+                // 선명도 보정을 위한 임시 캔버스 생성
+                const enhancedCanvas = document.createElement('canvas');
+                enhancedCanvas.width = croppedCanvas.width;
+                enhancedCanvas.height = croppedCanvas.height;
+                const ctx = enhancedCanvas.getContext('2d');
+                
+                // [선명도 보정 핵심 로직] 명암비(Contrast)를 높이고 밝기를 조정하여 글씨를 뚜렷하게 만듦
+                ctx.filter = 'contrast(135%) brightness(105%) saturate(110%)';
+                ctx.drawImage(croppedCanvas, 0, 0);
 
-                if (index > 0) {
-                    pdf.addPage();
-                }
+                // 보정된 캔버스를 이미지 데이터로 추출
+                const imgData = enhancedCanvas.toDataURL('image/jpeg', 0.85);
 
-                // PDF 페이지 크기에 맞게 이미지 비율 조정
+                if (index > 0) pdf.addPage();
+
                 const imgProps = pdf.getImageProperties(imgData);
                 const ratio = imgProps.width / imgProps.height;
                 
                 let renderWidth = pdfWidth;
                 let renderHeight = pdfWidth / ratio;
                 
-                // 세로 길이가 A4를 초과할 경우 세로 길이에 맞춤
                 if (renderHeight > pdfHeight) {
                     renderHeight = pdfHeight;
                     renderWidth = pdfHeight * ratio;
                 }
                 
-                // 페이지 중앙 정렬
                 const x = (pdfWidth - renderWidth) / 2;
                 const y = (pdfHeight - renderHeight) / 2;
                 
                 pdf.addImage(imgData, 'JPEG', x, y, renderWidth, renderHeight);
             });
 
-            // 최종 PDF 다운로드
-            pdf.save('color_scanned_document.pdf');
-            loadingOverlay.style.display = 'none'; // 대기 화면 숨김
+            pdf.save('enhanced_scanned_document.pdf');
+            loadingOverlay.style.display = 'none';
         }, 100);
     });
 </script>
