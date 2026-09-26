@@ -77,7 +77,7 @@
         .drag-handle { background: #eee; padding: 8px; cursor: grab; font-size: 0.9rem; font-weight: bold; color: #555; margin-bottom: 10px; border-radius: 4px; }
         .remove-btn { position: absolute; top: 10px; right: 10px; background: #dc3545; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 0.8rem; z-index: 10; }
         
-        /* 🌟 사진 원본 비율을 완벽히 수용하는 에디터 컨테이너 */
+        /* 🌟 문서 원본 비율을 그대로 품어주는 에디터 컨테이너 */
         .editor-container { position: relative; display: inline-block; overflow: visible; background: #eee; line-height: 0; touch-action: none; max-width: 100%; margin: 15px auto; }
         .editor-container img { max-width: 100%; height: auto; display: block; margin: 0; pointer-events: none; user-select: none; -webkit-user-drag: none; }
         .editor-svg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: auto; overflow: visible; }
@@ -393,6 +393,7 @@
         }, { offset: Number.NEGATIVE_INFINITY }).element;
     }
 
+    // 🌟 3:4 표준 교재 비율을 완벽히 유지하며 찌그러짐을 방지하는 평탄화 연산 엔진
     function processSingleImage(instance, filterType) {
         const hiddenCanvas = document.getElementById('hidden-canvas');
         let natW = instance.imgElement.naturalWidth;
@@ -414,9 +415,21 @@
         let pts = instance.getNormalizedPoints().map(p => ({ x: p.x * natW, y: p.y * natH }));
         
         let tl = pts[0], tr = pts[1], br = pts[2], bl = pts[3];
-        let maxWidth = Math.max(Math.sqrt(Math.pow(br.x - bl.x, 2) + Math.pow(br.y - bl.y, 2)), Math.sqrt(Math.pow(tr.x - tl.x, 2) + Math.pow(tr.y - tl.y, 2)));
-        let maxHeight = Math.max(Math.sqrt(Math.pow(tr.x - br.x, 2) + Math.pow(tr.y - br.y, 2)), Math.sqrt(Math.pow(tl.x - bl.x, 2) + Math.pow(tl.y - bl.y, 2)));
         
+        // 가로/세로 길이를 정밀 산출하여 찌그러짐 없는 3:4 표준 비율 적용
+        let widthTop = Math.sqrt(Math.pow(tr.x - tl.x, 2) + Math.pow(tr.y - tl.y, 2));
+        let widthBottom = Math.sqrt(Math.pow(br.x - bl.x, 2) + Math.pow(br.y - bl.y, 2));
+        let heightLeft = Math.sqrt(Math.pow(bl.x - tl.x, 2) + Math.pow(bl.y - tl.y, 2));
+        let heightRight = Math.sqrt(Math.pow(br.x - tr.x, 2) + Math.pow(br.y - tr.y, 2));
+        
+        let maxWidth = Math.max(widthTop, widthBottom);
+        let maxHeight = Math.max(heightLeft, heightRight);
+        
+        // 세로형 문서(3:4) 표준 비율 보정
+        if (maxHeight < maxWidth * 1.2) {
+            maxHeight = Math.round(maxWidth * 1.333); // 3:4 비율 강제 균형 유지
+        }
+
         let srcTri = cv.matFromArray(4, 1, cv.CV_32FC2, [tl.x, tl.y, tr.x, tr.y, br.x, br.y, bl.x, bl.y]);
         let dstTri = cv.matFromArray(4, 1, cv.CV_32FC2, [0, 0, maxWidth, 0, maxWidth, maxHeight, 0, maxHeight]);
         
@@ -536,14 +549,15 @@
         
         img.onload = () => {
             setTimeout(() => {
-                // 🌟 이미지 원본 비율에 맞추어 초기 4점 영역을 문서 내부 여백 있게 설정 (잘림 방지)
                 const natW = img.naturalWidth;
                 const natH = img.naturalHeight;
+                
+                // 🌟 세로형 문서(교재/A4) 비율에 맞추어 초기 4점 영역을 넉넉하게 설정 (상하 누락 방지)
                 const normalizedPoints = [
-                    { x: 0.15, y: 0.15 },
-                    { x: 0.85, y: 0.15 },
-                    { x: 0.85, y: 0.85 },
-                    { x: 0.15, y: 0.85 }
+                    { x: 0.1, y: 0.05 },
+                    { x: 0.9, y: 0.05 },
+                    { x: 0.9, y: 0.95 },
+                    { x: 0.1, y: 0.95 }
                 ];
                 
                 const updateUI = () => {
