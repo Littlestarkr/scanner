@@ -1,64 +1,3009 @@
-            return;
-        }
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 
-        loadingOverlay.style.display = 'flex';
+<title>HappyOh Mobile Scanner</title>
 
-        setTimeout(async () => {
-            const { jsPDF } = window.jspdf;
-            const pdf = new jsPDF('p', 'mm', 'a4');
-            const pdfW = pdf.internal.pageSize.getWidth();
-            const pdfH = pdf.internal.pageSize.getHeight();
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script async
+        src="https://docs.opencv.org/4.8.0/opencv.js"
+        onload="onOpenCvReady();"
+        type="text/javascript"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
 
-            const margin = 10;
-            const maxUsableW = pdfW - (margin * 2);
-            const maxUsableH = pdfH - (margin * 2);
+<style>
+* {
+    box-sizing: border-box;
+}
 
-            wrappers.forEach((wrapper, index) => {
-                const instance = docInstances[wrapper.id];
-                const result = instance.processedData;
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                 Roboto, "Noto Sans KR", sans-serif;
+    margin: 0;
+    padding: 20px;
+    background: #f4f4f4;
+    color: #333;
+}
 
-                if (index > 0) pdf.addPage();
+.container {
+    max-width: 800px;
+    margin: auto;
+    background: #fff;
+    padding: 30px;
+    border-radius: 10px;
+    box-shadow: 0 2px 10px rgba(0,0,0,.1);
+}
 
-                const ratio = result.width / result.height;
-                let renderWidth = maxUsableW;
-                let renderHeight = maxUsableW / ratio;
+h1 {
+    text-align: center;
+    font-size: 1.6rem;
+    margin-bottom: 5px;
+    color: #222;
+}
 
-                if (renderHeight > maxUsableH) {
-                    renderHeight = maxUsableH;
-                    renderWidth = maxUsableH * ratio;
-                }
+.sub-header {
+    text-align: center;
+    color: #666;
+    margin-top: 0;
+}
 
-                const x = margin + (maxUsableW - renderWidth) / 2;
-                const y = margin + (maxUsableH - renderHeight) / 2;
+.chrome-notice {
+    text-align: center;
+    color: #856404;
+    background: #fff3cd;
+    padding: 10px;
+    border-radius: 6px;
+    font-size: .9rem;
+}
 
-                pdf.addImage(result.data, 'JPEG', x, y, renderWidth, renderHeight);
-            });
+#cv-status {
+    text-align: center;
+    color: #dc3545;
+    font-weight: bold;
+    margin: 15px 0;
+}
 
-            const defaultFileName = "스캔문서_" + new Date().toISOString().slice(0,10);
+.btn-group {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+}
 
-            try {
-                if (window.showSaveFilePicker) {
-                    const handle = await window.showSaveFilePicker({
-                        suggestedName: defaultFileName + '.pdf',
-                        types: [{ description: 'PDF 파일', accept: {'application/pdf': ['.pdf']} }]
-                    });
-                    const writable = await handle.createWritable();
-                    const pdfBlob = pdf.output('blob');
-                    await writable.write(pdfBlob);
-                    await writable.close();
-                } else {
-                    const fileNameInput = prompt("저장할 파일 이름을 입력하세요 (확장자 생략)", defaultFileName);
-                    if (fileNameInput) {
-                        pdf.save(fileNameInput + '.pdf');
+.btn {
+    flex: 1;
+    min-width: 140px;
+    padding: 13px 15px;
+    border: 0;
+    border-radius: 7px;
+    cursor: pointer;
+    font-size: 1rem;
+    font-weight: bold;
+    background: #333;
+    color: white;
+}
+
+.btn:hover {
+    opacity: .9;
+}
+
+.btn:disabled {
+    background: #999;
+    cursor: not-allowed;
+}
+
+.btn-action {
+    width: 100%;
+    display: none;
+    background: #0056b3;
+}
+
+input[type=file] {
+    display: none;
+}
+
+#settings-panel {
+    display: none;
+    background: #fafafa;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 15px;
+    margin-bottom: 20px;
+}
+
+.settings-row {
+    margin-bottom: 18px;
+}
+
+.settings-row:last-child {
+    margin-bottom: 0;
+}
+
+.settings-label {
+    display: block;
+    font-weight: bold;
+    margin-bottom: 10px;
+}
+
+.radio-group {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.radio-item {
+    font-size: .9rem;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.doc-wrapper {
+    position: relative;
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 15px;
+    margin-bottom: 20px;
+}
+
+.doc-wrapper.dragging {
+    opacity: .5;
+}
+
+.drag-handle {
+    background: #eee;
+    padding: 8px;
+    text-align: center;
+    border-radius: 5px;
+    margin-bottom: 10px;
+    cursor: grab;
+    font-size: .9rem;
+    font-weight: bold;
+}
+
+.remove-btn {
+    position: absolute;
+    right: 10px;
+    top: 10px;
+    background: #dc3545;
+    color: white;
+    border: 0;
+    border-radius: 5px;
+    padding: 6px 10px;
+    cursor: pointer;
+    z-index: 10;
+}
+
+.editor-container {
+    position: relative;
+    display: inline-block;
+    max-width: 100%;
+    background: #eee;
+    line-height: 0;
+    touch-action: none;
+    margin: 10px auto 15px;
+}
+
+.editor-container img {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    user-select: none;
+    pointer-events: none;
+}
+
+.editor-svg {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+    touch-action: none;
+}
+
+.poly-line {
+    fill: rgba(0,123,255,.15);
+    stroke: #007bff;
+    stroke-width: 3;
+}
+
+.corner-point {
+    fill: #007bff;
+    stroke: white;
+    stroke-width: 3;
+    cursor: grab;
+}
+
+.corner-point:active {
+    fill: #0056b3;
+}
+
+.preview-img {
+    display: none;
+    max-width: 100%;
+    height: auto;
+    margin: 15px auto;
+    border: 1px solid #ccc;
+}
+
+.page-controls {
+    display: flex;
+    gap: 10px;
+}
+
+.flatten-btn,
+.revert-btn {
+    flex: 1;
+    padding: 10px;
+    border: 0;
+    border-radius: 6px;
+    color: white;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+.flatten-btn {
+    background: #17a2b8;
+}
+
+.revert-btn {
+    display: none;
+    background: #6c757d;
+}
+
+.ocr-btn {
+    display: none;
+    width: 100%;
+    margin-top: 10px;
+    padding: 10px;
+    border: 0;
+    border-radius: 6px;
+    background: #28a745;
+    color: white;
+    font-weight: bold;
+}
+
+.ocr-result {
+    display: none;
+    width: 100%;
+    min-height: 120px;
+    margin-top: 10px;
+    resize: vertical;
+}
+
+#magnifier {
+    position: fixed;
+    width: 110px;
+    height: 110px;
+    border: 3px solid #007bff;
+    border-radius: 50%;
+    background-repeat: no-repeat;
+    display: none;
+    pointer-events: none;
+    z-index: 4000;
+    background-color: white;
+    box-shadow: 0 4px 10px rgba(0,0,0,.3);
+}
+
+/* CAMERA */
+
+#camera-section {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+    background: #000;
+    flex-direction: column;
+}
+
+.video-container {
+    position: relative;
+    width: 100%;
+    height: calc(100% - 100px);
+    background: #111;
+    overflow: hidden;
+}
+
+#camera-stream {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    background: #000;
+}
+
+.focus-ring {
+    position: absolute;
+    width: 60px;
+    height: 60px;
+    border: 2px solid #28a745;
+    border-radius: 50%;
+    display: none;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+}
+
+#focus-hint {
+    position: absolute;
+    top: 15px;
+    left: 0;
+    width: 100%;
+    color: rgba(255,255,255,.8);
+    text-align: center;
+    font-size: .85rem;
+    pointer-events: none;
+}
+
+#cam-status {
+    position: absolute;
+    right: 10px;
+    top: 10px;
+    color: white;
+    background: rgba(0,0,0,.55);
+    padding: 5px 10px;
+    border-radius: 5px;
+    z-index: 10;
+}
+
+#cam-thumbnails {
+    position: absolute;
+    bottom: 10px;
+    left: 10px;
+    display: none;
+    gap: 8px;
+    max-width: calc(100% - 20px);
+    overflow-x: auto;
+    background: rgba(0,0,0,.45);
+    padding: 5px;
+    border-radius: 5px;
+}
+
+.thumb-item {
+    width: 50px;
+    height: 65px;
+    flex-shrink: 0;
+    position: relative;
+    border: 2px solid white;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.thumb-item img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.thumb-badge {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    background: #dc3545;
+    color: white;
+    padding: 2px 4px;
+    border-radius: 3px;
+    font-size: .7rem;
+}
+
+.camera-controls {
+    height: 100px;
+    background: #000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+    padding: 15px;
+}
+
+.cam-btn {
+    border: 0;
+    border-radius: 30px;
+    padding: 14px 25px;
+    font-size: 1rem;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+#snap-btn {
+    background: white;
+}
+
+#done-btn {
+    background: #28a745;
+    color: white;
+}
+
+#loading-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 5000;
+    background: rgba(0,0,0,.8);
+    color: white;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 15px;
+}
+
+@media(max-width:600px) {
+    body {
+        padding: 10px;
+    }
+
+    .container {
+        padding: 18px 12px;
+    }
+
+    .radio-group {
+        flex-direction: column;
+    }
+
+    .page-controls {
+        flex-direction: column;
+    }
+}
+</style>
+</head>
+
+<body>
+
+<div id="magnifier"></div>
+
+<div class="container">
+
+<h1>HappyOh Mobile Scanner</h1>
+
+<p class="sub-header">happyojh@gmail.com</p>
+
+<p class="chrome-notice">
+※ 카메라 기능은 Google Chrome에서 사용하는 것을 권장합니다.
+</p>
+
+<div id="cv-status">
+AI 비전 엔진 로딩 중...
+</div>
+
+<div class="btn-group">
+
+<label for="file-input"
+       class="btn"
+       id="lbl-file"
+       style="pointer-events:none;opacity:.5;">
+    📁 사진 불러오기
+</label>
+
+<input type="file"
+       id="file-input"
+       accept="image/*"
+       multiple
+       disabled>
+
+<button id="open-camera-btn"
+        class="btn"
+        style="background:#28a745;"
+        disabled>
+    📷 카메라 촬영
+</button>
+
+</div>
+
+<div id="settings-panel">
+
+<div class="settings-row">
+
+<span class="settings-label">
+스캔 모드
+</span>
+
+<div class="radio-group">
+
+<label class="radio-item">
+<input type="radio"
+       name="filter_type"
+       value="bw"
+       checked>
+📝 문서 흑백
+</label>
+
+<label class="radio-item">
+<input type="radio"
+       name="filter_type"
+       value="gray">
+🌗 자연스러운 그레이
+</label>
+
+<label class="radio-item">
+<input type="radio"
+       name="filter_type"
+       value="color">
+🎨 컬러
+</label>
+
+</div>
+</div>
+
+<div class="settings-row">
+
+<span class="settings-label">
+PDF 품질
+</span>
+
+<div class="radio-group">
+
+<label class="radio-item">
+<input type="radio"
+       name="quality"
+       value="1">
+고화질
+</label>
+
+<label class="radio-item">
+<input type="radio"
+       name="quality"
+       value=".8"
+       checked>
+균형
+</label>
+
+<label class="radio-item">
+<input type="radio"
+       name="quality"
+       value=".5">
+저용량
+</label>
+
+</div>
+
+</div>
+
+</div>
+
+<div id="workspace"></div>
+
+<button id="generate-pdf-btn"
+        class="btn btn-action">
+    📄 순서대로 PDF 저장
+</button>
+
+</div>
+
+<div id="camera-section">
+
+<div class="video-container"
+     id="video-container">
+
+<video id="camera-stream"
+       autoplay
+       playsinline></video>
+
+<div id="cam-status">
+촬영: 0장
+</div>
+
+<div id="focus-ring"
+     class="focus-ring"></div>
+
+<div id="focus-hint">
+화면을 터치하면 초점을 맞춥니다
+</div>
+
+<div id="cam-thumbnails"></div>
+
+</div>
+
+<div class="camera-controls">
+
+<button id="snap-btn"
+        class="cam-btn">
+📸 촬영
+</button>
+
+<button id="done-btn"
+        class="cam-btn">
+✔ 완료
+</button>
+
+</div>
+
+</div>
+
+<div id="loading-overlay">
+<div id="loading-msg">
+문서를 처리하고 있습니다...
+</div>
+</div>
+
+<canvas id="hidden-canvas"
+        style="display:none;"></canvas>
+
+
+<script>
+
+let cvReady = false;
+
+let docInstances = {};
+
+let videoStream = null;
+let videoTrack = null;
+
+let tempCapturedImages = [];
+
+let imageCounter = 0;
+
+const workspace =
+    document.getElementById("workspace");
+
+const generatePdfBtn =
+    document.getElementById("generate-pdf-btn");
+
+const settingsPanel =
+    document.getElementById("settings-panel");
+
+const loadingOverlay =
+    document.getElementById("loading-overlay");
+
+const cvStatusDisplay =
+    document.getElementById("cv-status");
+
+const magnifier =
+    document.getElementById("magnifier");
+
+
+/* =========================================
+   OPENCV READY
+========================================= */
+
+function onOpenCvReady() {
+
+    cvReady = true;
+
+    cvStatusDisplay.innerText =
+        "✓ 문서 인식 엔진 준비 완료";
+
+    cvStatusDisplay.style.color =
+        "#28a745";
+
+    document.getElementById("file-input")
+        .disabled = false;
+
+    document.getElementById("open-camera-btn")
+        .disabled = false;
+
+    document.getElementById("lbl-file")
+        .style.pointerEvents = "auto";
+
+    document.getElementById("lbl-file")
+        .style.opacity = "1";
+}
+
+
+/* =========================================
+   CAMERA
+========================================= */
+
+document.getElementById("open-camera-btn")
+.addEventListener("click", async () => {
+
+    if (!navigator.mediaDevices ||
+        !navigator.mediaDevices.getUserMedia) {
+
+        alert("이 브라우저에서는 카메라를 사용할 수 없습니다.");
+        return;
+    }
+
+    try {
+
+        videoStream =
+            await navigator.mediaDevices.getUserMedia({
+
+                audio:false,
+
+                video:{
+                    facingMode:{
+                        ideal:"environment"
+                    },
+
+                    width:{
+                        ideal:3840
+                    },
+
+                    height:{
+                        ideal:2160
                     }
                 }
-            } catch (err) {
-                console.log("저장 취소 또는 오류:", err);
+
+            });
+
+        const video =
+            document.getElementById("camera-stream");
+
+        video.srcObject =
+            videoStream;
+
+        videoTrack =
+            videoStream.getVideoTracks()[0];
+
+        /* 연속 자동초점 */
+
+        try {
+
+            const capabilities =
+                videoTrack.getCapabilities();
+
+            if(capabilities.focusMode &&
+               capabilities.focusMode.includes("continuous")){
+
+                await videoTrack.applyConstraints({
+
+                    advanced:[
+                        {
+                            focusMode:"continuous"
+                        }
+                    ]
+
+                });
+
             }
 
-            loadingOverlay.style.display = 'none';
-        }, 150);
+        } catch(e){}
+
+        tempCapturedImages = [];
+
+        document.getElementById("cam-thumbnails")
+            .innerHTML = "";
+
+        document.getElementById("cam-thumbnails")
+            .style.display = "none";
+
+        document.getElementById("cam-status")
+            .innerText = "촬영: 0장";
+
+        document.getElementById("camera-section")
+            .style.display = "flex";
+
+    }
+
+    catch(err){
+
+        alert(
+            "카메라 접근에 실패했습니다.\n\n" +
+            "Chrome 브라우저에서 다시 시도하고 " +
+            "카메라 권한을 허용해 주세요."
+        );
+
+    }
+
+});
+
+
+/* =========================================
+   TAP FOCUS
+========================================= */
+
+document.getElementById("video-container")
+.addEventListener("pointerdown", async e => {
+
+    if(!videoTrack) return;
+
+    const video =
+        document.getElementById("camera-stream");
+
+    const rect =
+        video.getBoundingClientRect();
+
+    const x =
+        (e.clientX - rect.left) /
+        rect.width;
+
+    const y =
+        (e.clientY - rect.top) /
+        rect.height;
+
+    const focusRing =
+        document.getElementById("focus-ring");
+
+    focusRing.style.left =
+        `${e.clientX - rect.left}px`;
+
+    focusRing.style.top =
+        `${e.clientY - rect.top}px`;
+
+    focusRing.style.display =
+        "block";
+
+    setTimeout(() => {
+
+        focusRing.style.display =
+            "none";
+
+    },1000);
+
+    try {
+
+        const capabilities =
+            videoTrack.getCapabilities();
+
+        if(capabilities.focusMode){
+
+            await videoTrack.applyConstraints({
+
+                advanced:[
+                    {
+                        focusMode:"single-shot",
+                        pointsOfInterest:[
+                            {
+                                x:Math.max(0,Math.min(1,x)),
+                                y:Math.max(0,Math.min(1,y))
+                            }
+                        ]
+                    }
+                ]
+
+            });
+
+        }
+
+    } catch(err){}
+
+});
+
+
+/* =========================================
+   CAMERA SNAP
+========================================= */
+
+document.getElementById("snap-btn")
+.addEventListener("click", () => {
+
+    if(!videoStream) return;
+
+    const video =
+        document.getElementById("camera-stream");
+
+    if(!video.videoWidth ||
+       !video.videoHeight) return;
+
+    const canvas =
+        document.createElement("canvas");
+
+    canvas.width =
+        video.videoWidth;
+
+    canvas.height =
+        video.videoHeight;
+
+    const ctx =
+        canvas.getContext("2d");
+
+    /*
+       object-fit:contain을 사용하므로
+       영상 전체가 그대로 저장된다.
+    */
+
+    ctx.drawImage(
+        video,
+        0,
+        0,
+        canvas.width,
+        canvas.height
+    );
+
+    const dataUrl =
+        canvas.toDataURL(
+            "image/jpeg",
+            .96
+        );
+
+    tempCapturedImages.push(dataUrl);
+
+    const count =
+        tempCapturedImages.length;
+
+    document.getElementById("cam-status")
+        .innerText =
+        `촬영: ${count}장`;
+
+    const thumbContainer =
+        document.getElementById("cam-thumbnails");
+
+    thumbContainer.style.display =
+        "flex";
+
+    const item =
+        document.createElement("div");
+
+    item.className =
+        "thumb-item";
+
+    const img =
+        document.createElement("img");
+
+    img.src =
+        dataUrl;
+
+    const badge =
+        document.createElement("div");
+
+    badge.className =
+        "thumb-badge";
+
+    badge.innerText =
+        count;
+
+    item.appendChild(img);
+    item.appendChild(badge);
+
+    thumbContainer.appendChild(item);
+
+    thumbContainer.scrollLeft =
+        thumbContainer.scrollWidth;
+
+});
+
+
+/* =========================================
+   CAMERA DONE
+========================================= */
+
+document.getElementById("done-btn")
+.addEventListener("click", () => {
+
+    if(videoStream){
+
+        videoStream
+            .getTracks()
+            .forEach(track =>
+                track.stop()
+            );
+
+    }
+
+    videoStream = null;
+    videoTrack = null;
+
+    document.getElementById("camera-section")
+        .style.display = "none";
+
+    tempCapturedImages
+        .forEach(data =>
+            createEditorForImage(data)
+        );
+
+});
+
+
+/* =========================================
+   FILE INPUT
+========================================= */
+
+document.getElementById("file-input")
+.addEventListener("change", e => {
+
+    Array.from(e.target.files)
+    .forEach(file => {
+
+        const reader =
+            new FileReader();
+
+        reader.onload =
+            event =>
+                createEditorForImage(
+                    event.target.result
+                );
+
+        reader.readAsDataURL(file);
+
     });
+
+    e.target.value = "";
+
+});
+
+
+/* =========================================
+   SORT CORNERS
+========================================= */
+
+function sortCorners(points){
+
+    if(points.length !== 4)
+        return points;
+
+    const center = points.reduce(
+        (acc,p) => ({
+            x:acc.x+p.x,
+            y:acc.y+p.y
+        }),
+        {x:0,y:0}
+    );
+
+    center.x /= 4;
+    center.y /= 4;
+
+    const sorted =
+        points.slice().sort(
+            (a,b) => {
+
+                const angleA =
+                    Math.atan2(
+                        a.y-center.y,
+                        a.x-center.x
+                    );
+
+                const angleB =
+                    Math.atan2(
+                        b.y-center.y,
+                        b.x-center.x
+                    );
+
+                return angleA-angleB;
+
+            }
+        );
+
+    /*
+       좌상단을 첫 번째로 이동
+    */
+
+    let index = 0;
+
+    let min =
+        Infinity;
+
+    sorted.forEach((p,i) => {
+
+        const value =
+            p.x+p.y;
+
+        if(value < min){
+
+            min = value;
+            index = i;
+
+        }
+
+    });
+
+    const rotated =
+        sorted
+            .slice(index)
+            .concat(sorted.slice(0,index));
+
+    /*
+       [TL, TR, BR, BL]
+    */
+
+    if(rotated[1].x <
+       rotated[3].x){
+
+        const temp =
+            rotated[1];
+
+        rotated[1] =
+            rotated[3];
+
+        rotated[3] =
+            temp;
+
+    }
+
+    return rotated;
+}
+
+
+/* =========================================
+   DISTANCE
+========================================= */
+
+function distance(a,b){
+
+    return Math.sqrt(
+        Math.pow(a.x-b.x,2) +
+        Math.pow(a.y-b.y,2)
+    );
+
+}
+
+
+/* =========================================
+   QUADRILATERAL AREA
+========================================= */
+
+function polygonArea(points){
+
+    let area = 0;
+
+    for(let i=0;i<points.length;i++){
+
+        const j =
+            (i+1)%points.length;
+
+        area +=
+            points[i].x*points[j].y -
+            points[j].x*points[i].y;
+
+    }
+
+    return Math.abs(area/2);
+}
+
+
+/* =========================================
+   IMPROVED DOCUMENT DETECTION
+========================================= */
+
+function detect4Corners(imgElement){
+
+    const W =
+        imgElement.naturalWidth;
+
+    const H =
+        imgElement.naturalHeight;
+
+    const fallback = [
+
+        {x:W*.04,y:H*.03},
+        {x:W*.96,y:H*.03},
+        {x:W*.96,y:H*.97},
+        {x:W*.04,y:H*.97}
+
+    ];
+
+    try {
+
+        const canvas =
+            document.createElement("canvas");
+
+        const scale =
+            Math.min(
+                1,
+                1200 /
+                Math.max(W,H)
+            );
+
+        canvas.width =
+            Math.round(W*scale);
+
+        canvas.height =
+            Math.round(H*scale);
+
+        const ctx =
+            canvas.getContext("2d");
+
+        ctx.drawImage(
+            imgElement,
+            0,
+            0,
+            canvas.width,
+            canvas.height
+        );
+
+        let src =
+            cv.imread(canvas);
+
+        let gray =
+            new cv.Mat();
+
+        let blur =
+            new cv.Mat();
+
+        let edges =
+            new cv.Mat();
+
+        cv.cvtColor(
+            src,
+            gray,
+            cv.COLOR_RGBA2GRAY
+        );
+
+        cv.GaussianBlur(
+            gray,
+            blur,
+            new cv.Size(5,5),
+            0
+        );
+
+        cv.Canny(
+            blur,
+            edges,
+            40,
+            150
+        );
+
+        /*
+           morphology로 끊어진 문서 외곽선을 연결
+        */
+
+        const kernel =
+            cv.getStructuringElement(
+                cv.MORPH_RECT,
+                new cv.Size(5,5)
+            );
+
+        cv.morphologyEx(
+            edges,
+            edges,
+            cv.MORPH_CLOSE,
+            kernel
+        );
+
+        let contours =
+            new cv.MatVector();
+
+        let hierarchy =
+            new cv.Mat();
+
+        cv.findContours(
+            edges,
+            contours,
+            hierarchy,
+            cv.RETR_LIST,
+            cv.CHAIN_APPROX_SIMPLE
+        );
+
+        const imageArea =
+            canvas.width *
+            canvas.height;
+
+        let candidates = [];
+
+        for(
+            let i=0;
+            i<contours.size();
+            i++
+        ){
+
+            let contour =
+                contours.get(i);
+
+            const area =
+                cv.contourArea(contour);
+
+            if(
+                area <
+                imageArea*.08
+            ){
+
+                contour.delete();
+                continue;
+
+            }
+
+            const perimeter =
+                cv.arcLength(
+                    contour,
+                    true
+                );
+
+            let approx =
+                new cv.Mat();
+
+            cv.approxPolyDP(
+                contour,
+                approx,
+                perimeter*.025,
+                true
+            );
+
+            if(approx.rows === 4){
+
+                const pts = [];
+
+                for(let k=0;k<4;k++){
+
+                    pts.push({
+
+                        x:
+                        approx.data32S[k*2],
+
+                        y:
+                        approx.data32S[k*2+1]
+
+                    });
+
+                }
+
+                const area4 =
+                    polygonArea(pts);
+
+                const ratio =
+                    area4/imageArea;
+
+                /*
+                   너무 화면 끝에 붙은 contour,
+                   너무 작은 contour 제거
+                */
+
+                const margin =
+                    Math.min(
+                        ...pts.map(p =>
+                            Math.min(
+                                p.x,
+                                p.y,
+                                canvas.width-p.x,
+                                canvas.height-p.y
+                            )
+                        )
+                    );
+
+                /*
+                   네 변 길이
+                */
+
+                const lengths = [
+
+                    distance(pts[0],pts[1]),
+                    distance(pts[1],pts[2]),
+                    distance(pts[2],pts[3]),
+                    distance(pts[3],pts[0])
+
+                ];
+
+                const maxLen =
+                    Math.max(...lengths);
+
+                const minLen =
+                    Math.min(...lengths);
+
+                /*
+                   극단적으로 찌그러진 사각형 배제
+                */
+
+                if(
+                    minLen/maxLen > .18 &&
+                    ratio > .12 &&
+                    ratio < .98
+                ){
+
+                    /*
+                       점수가 클수록 문서일 가능성이 높음
+                    */
+
+                    let score =
+                        ratio * 100;
+
+                    /*
+                       화면 중앙에 가까울수록 가산점
+                    */
+
+                    const centerX =
+                        pts.reduce(
+                            (s,p)=>s+p.x,0
+                        )/4;
+
+                    const centerY =
+                        pts.reduce(
+                            (s,p)=>s+p.y,0
+                        )/4;
+
+                    const dx =
+                        centerX-canvas.width/2;
+
+                    const dy =
+                        centerY-canvas.height/2;
+
+                    const centerDist =
+                        Math.sqrt(dx*dx+dy*dy) /
+                        Math.sqrt(
+                            canvas.width**2+
+                            canvas.height**2
+                        );
+
+                    score +=
+                        (1-centerDist)*15;
+
+                    /*
+                       너무 화면 가장자리인 경우
+                       약간 감점
+                    */
+
+                    if(margin <
+                       Math.min(
+                           canvas.width,
+                           canvas.height
+                       )*.01){
+
+                        score -= 5;
+
+                    }
+
+                    candidates.push({
+
+                        score,
+                        points:pts
+
+                    });
+
+                }
+
+            }
+
+            approx.delete();
+            contour.delete();
+
+        }
+
+        kernel.delete();
+
+        src.delete();
+        gray.delete();
+        blur.delete();
+        edges.delete();
+        contours.delete();
+        hierarchy.delete();
+
+        if(!candidates.length)
+            return fallback;
+
+        candidates.sort(
+            (a,b)=>
+                b.score-a.score
+        );
+
+        const best =
+            sortCorners(
+                candidates[0].points
+            );
+
+        return best.map(p => ({
+
+            x:p.x/scale,
+            y:p.y/scale
+
+        }));
+
+    }
+
+    catch(e){
+
+        console.warn(
+            "문서 자동검출 실패",
+            e
+        );
+
+        return fallback;
+
+    }
+
+}
+
+
+/* =========================================
+   UI
+========================================= */
+
+function updateControlsVisibility(){
+
+    const has =
+        workspace.children.length > 0;
+
+    generatePdfBtn.style.display =
+        has ? "block" : "none";
+
+    settingsPanel.style.display =
+        has ? "block" : "none";
+
+}
+
+
+/* =========================================
+   DRAG SORT
+========================================= */
+
+let draggedItem = null;
+
+workspace.addEventListener(
+    "dragstart",
+    e => {
+
+        if(
+            e.target.classList
+            .contains("doc-wrapper")
+        ){
+
+            draggedItem =
+                e.target;
+
+            e.target.classList
+                .add("dragging");
+
+        }
+
+    }
+);
+
+workspace.addEventListener(
+    "dragend",
+    e => {
+
+        if(
+            e.target.classList
+            .contains("doc-wrapper")
+        ){
+
+            e.target.classList
+                .remove("dragging");
+
+            draggedItem = null;
+
+        }
+
+    }
+);
+
+workspace.addEventListener(
+    "dragover",
+    e => {
+
+        e.preventDefault();
+
+        if(!draggedItem)
+            return;
+
+        const after =
+            getDragAfterElement(
+                workspace,
+                e.clientY
+            );
+
+        if(!after)
+            workspace.appendChild(
+                draggedItem
+            );
+
+        else
+            workspace.insertBefore(
+                draggedItem,
+                after
+            );
+
+    }
+);
+
+function getDragAfterElement(
+    container,
+    y
+){
+
+    const elements =
+        [
+            ...container
+            .querySelectorAll(
+                ".doc-wrapper:not(.dragging)"
+            )
+        ];
+
+    return elements.reduce(
+        (closest,child)=>{
+
+            const box =
+                child.getBoundingClientRect();
+
+            const offset =
+                y -
+                box.top -
+                box.height/2;
+
+            if(
+                offset < 0 &&
+                offset > closest.offset
+            ){
+
+                return {
+                    offset,
+                    element:child
+                };
+
+            }
+
+            return closest;
+
+        },
+        {
+            offset:
+                Number.NEGATIVE_INFINITY
+        }
+    ).element;
+
+}
+
+
+/* =========================================
+   IMAGE PROCESSING
+========================================= */
+
+function processSingleImage(
+    instance,
+    filterType
+){
+
+    let natW =
+        instance.imgElement.naturalWidth;
+
+    let natH =
+        instance.imgElement.naturalHeight;
+
+    /*
+       스마트폰 원본이 너무 크면
+       브라우저 메모리 폭주 방지
+    */
+
+    const MAX_SRC = 2200;
+
+    let scaleRatio = 1;
+
+    if(
+        Math.max(natW,natH)
+        > MAX_SRC
+    ){
+
+        scaleRatio =
+            MAX_SRC /
+            Math.max(natW,natH);
+
+        natW =
+            Math.round(
+                natW*scaleRatio
+            );
+
+        natH =
+            Math.round(
+                natH*scaleRatio
+            );
+
+    }
+
+    const canvas =
+        document.createElement("canvas");
+
+    canvas.width =
+        natW;
+
+    canvas.height =
+        natH;
+
+    const ctx =
+        canvas.getContext("2d");
+
+    ctx.drawImage(
+        instance.imgElement,
+        0,
+        0,
+        natW,
+        natH
+    );
+
+    let src =
+        cv.imread(canvas);
+
+    const points =
+        instance
+        .getNormalizedPoints()
+        .map(p => ({
+            x:p.x*natW,
+            y:p.y*natH
+        }));
+
+    const tl = points[0];
+    const tr = points[1];
+    const br = points[2];
+    const bl = points[3];
+
+    let targetWidth =
+        Math.round(
+            (
+                distance(tl,tr) +
+                distance(bl,br)
+            )/2
+        );
+
+    let targetHeight =
+        Math.round(
+            (
+                distance(tl,bl) +
+                distance(tr,br)
+            )/2
+        );
+
+    /*
+       지나치게 작은 결과 방지
+    */
+
+    targetWidth =
+        Math.max(400,targetWidth);
+
+    targetHeight =
+        Math.max(500,targetHeight);
+
+    /*
+       A4 문서가 지나치게 눌리는 경우
+       최소 종횡비 보정
+    */
+
+    const aspect =
+        targetHeight/targetWidth;
+
+    if(
+        aspect < .8
+    ){
+
+        targetHeight =
+            Math.round(
+                targetWidth*1.414
+            );
+
+    }
+
+    let srcPts =
+        cv.matFromArray(
+            4,
+            1,
+            cv.CV_32FC2,
+            [
+                tl.x,tl.y,
+                tr.x,tr.y,
+                br.x,br.y,
+                bl.x,bl.y
+            ]
+        );
+
+    let dstPts =
+        cv.matFromArray(
+            4,
+            1,
+            cv.CV_32FC2,
+            [
+                0,0,
+                targetWidth,0,
+                targetWidth,targetHeight,
+                0,targetHeight
+            ]
+        );
+
+    let M =
+        cv.getPerspectiveTransform(
+            srcPts,
+            dstPts
+        );
+
+    let warped =
+        new cv.Mat();
+
+    cv.warpPerspective(
+        src,
+        warped,
+        M,
+        new cv.Size(
+            targetWidth,
+            targetHeight
+        ),
+        cv.INTER_CUBIC,
+        cv.BORDER_CONSTANT,
+        new cv.Scalar(
+            255,
+            255,
+            255,
+            255
+        )
+    );
+
+
+    /* =====================================
+       COLOR
+    ===================================== */
+
+    if(filterType === "color"){
+
+        /*
+           컬러는 과도한 sharpening 대신
+           약한 대비 보정만 적용
+        */
+
+        let lab =
+            new cv.Mat();
+
+        cv.cvtColor(
+            warped,
+            lab,
+            cv.COLOR_RGBA2RGB
+        );
+
+        /*
+           약한 unsharp mask
+        */
+
+        let blur =
+            new cv.Mat();
+
+        cv.GaussianBlur(
+            lab,
+            blur,
+            new cv.Size(0,0),
+            1.2
+        );
+
+        cv.addWeighted(
+            lab,
+            1.12,
+            blur,
+            -.12,
+            0,
+            lab
+        );
+
+        cv.cvtColor(
+            lab,
+            warped,
+            cv.COLOR_RGB2RGBA
+        );
+
+        blur.delete();
+        lab.delete();
+
+    }
+
+
+    /* =====================================
+       GRAY / BW
+    ===================================== */
+
+    else {
+
+        let gray =
+            new cv.Mat();
+
+        cv.cvtColor(
+            warped,
+            gray,
+            cv.COLOR_RGBA2GRAY
+        );
+
+        /*
+           ---------------------------------
+           1. 조명 평탄화
+           ---------------------------------
+
+           큰 Gaussian blur를 이용해
+           종이의 조명 분포를 추정한다.
+
+           원본 / 조명맵
+        */
+
+        let illumination =
+            new cv.Mat();
+
+        const k =
+            Math.max(
+                31,
+                Math.min(
+                    151,
+                    Math.round(
+                        Math.min(
+                            targetWidth,
+                            targetHeight
+                        )/8
+                    ) | 1
+                )
+            );
+
+        cv.GaussianBlur(
+            gray,
+            illumination,
+            new cv.Size(k,k),
+            0,
+            0,
+            cv.BORDER_REPLICATE
+        );
+
+        /*
+           조명 맵이 너무 어두워지는 것을 방지
+        */
+
+        cv.max(
+            illumination,
+            new cv.Mat(
+                illumination.rows,
+                illumination.cols,
+                cv.CV_8UC1,
+                new cv.Scalar(35)
+            ),
+            illumination
+        );
+
+        let flat =
+            new cv.Mat();
+
+        /*
+           divide 결과를 0~255 범위로 정규화
+        */
+
+        cv.divide(
+            gray,
+            illumination,
+            flat,
+            255,
+            cv.CV_8UC1
+        );
+
+        /*
+           normalize를 추가해
+           전체 문서의 밝기를 안정화
+        */
+
+        cv.normalize(
+            flat,
+            flat,
+            25,
+            255,
+            cv.NORM_MINMAX,
+            cv.CV_8UC1
+        );
+
+
+        /*
+           ---------------------------------
+           2. 국소 대비 향상
+           ---------------------------------
+        */
+
+        let clahe =
+            new cv.Mat();
+
+        /*
+           OpenCV.js 버전에 따라
+           CLAHE 생성이 가능한 경우 사용
+        */
+
+        try {
+
+            const claheObj =
+                new cv.CLAHE(
+                    2.0,
+                    new cv.Size(8,8)
+                );
+
+            claheObj.apply(
+                flat,
+                clahe
+            );
+
+            claheObj.delete();
+
+        }
+
+        catch(e){
+
+            flat.copyTo(clahe);
+
+        }
+
+
+        /*
+           ---------------------------------
+           3. 필터별 출력
+           ---------------------------------
+        */
+
+        if(filterType === "gray"){
+
+            cv.cvtColor(
+                clahe,
+                warped,
+                cv.COLOR_GRAY2RGBA
+            );
+
+        }
+
+        else {
+
+            /*
+               문서 스캔용 Adaptive Threshold
+
+               단순 threshold 195보다
+               조명 편차에 강하다.
+            */
+
+            let binary =
+                new cv.Mat();
+
+            const block =
+                Math.max(
+                    31,
+                    Math.min(
+                        101,
+                        (
+                            Math.round(
+                                Math.min(
+                                    targetWidth,
+                                    targetHeight
+                                )/25
+                            ) | 1
+                        )
+                    )
+                );
+
+            cv.adaptiveThreshold(
+                clahe,
+                binary,
+                255,
+                cv.ADAPTIVE_THRESH_GAUSSIAN_C,
+                cv.THRESH_BINARY,
+                block,
+                11
+            );
+
+
+            /*
+               작은 점과 글자 주변 잡음 제거
+            */
+
+            let morph =
+                new cv.Mat();
+
+            const mk =
+                cv.getStructuringElement(
+                    cv.MORPH_RECT,
+                    new cv.Size(2,2)
+                );
+
+            cv.morphologyEx(
+                binary,
+                morph,
+                cv.MORPH_OPEN,
+                mk
+            );
+
+            /*
+               지나치게 공격적인 morphology를
+               피하기 위해 binary 대신
+               원래 binary 결과를 사용한다.
+            */
+
+            cv.cvtColor(
+                binary,
+                warped,
+                cv.COLOR_GRAY2RGBA
+            );
+
+            mk.delete();
+            binary.delete();
+            morph.delete();
+
+        }
+
+        gray.delete();
+        illumination.delete();
+        flat.delete();
+        clahe.delete();
+
+    }
+
+
+    const hiddenCanvas =
+        document.getElementById(
+            "hidden-canvas"
+        );
+
+    cv.imshow(
+        hiddenCanvas,
+        warped
+    );
+
+    const quality =
+        parseFloat(
+            document.querySelector(
+                'input[name="quality"]:checked'
+            ).value
+        );
+
+    const finalData =
+        hiddenCanvas.toDataURL(
+            "image/jpeg",
+            quality
+        );
+
+    src.delete();
+    warped.delete();
+    M.delete();
+    srcPts.delete();
+    dstPts.delete();
+
+    return {
+
+        data:finalData,
+
+        width:targetWidth,
+
+        height:targetHeight
+
+    };
+
+}
+
+
+/* =========================================
+   CREATE EDITOR
+========================================= */
+
+function createEditorForImage(dataUrl){
+
+    imageCounter++;
+
+    const id =
+        `doc-${imageCounter}`;
+
+    const wrapper =
+        document.createElement("div");
+
+    wrapper.className =
+        "doc-wrapper";
+
+    wrapper.id =
+        id;
+
+    wrapper.draggable =
+        true;
+
+
+    const dragHandle =
+        document.createElement("div");
+
+    dragHandle.className =
+        "drag-handle";
+
+    dragHandle.innerText =
+        "☰ 문서 순서 이동";
+
+
+    const removeBtn =
+        document.createElement("button");
+
+    removeBtn.className =
+        "remove-btn";
+
+    removeBtn.innerText =
+        "삭제";
+
+
+    const title =
+        document.createElement("h3");
+
+    title.innerText =
+        `문서 ${imageCounter}`;
+
+
+    const editor =
+        document.createElement("div");
+
+    editor.className =
+        "editor-container";
+
+
+    const img =
+        document.createElement("img");
+
+    img.src =
+        dataUrl;
+
+
+    const svg =
+        document.createElementNS(
+            "http://www.w3.org/2000/svg",
+            "svg"
+        );
+
+    svg.setAttribute(
+        "class",
+        "editor-svg"
+    );
+
+
+    const polygon =
+        document.createElementNS(
+            "http://www.w3.org/2000/svg",
+            "polygon"
+        );
+
+    polygon.setAttribute(
+        "class",
+        "poly-line"
+    );
+
+    svg.appendChild(polygon);
+
+
+    const circles = [];
+
+    for(let i=0;i<4;i++){
+
+        const circle =
+            document.createElementNS(
+                "http://www.w3.org/2000/svg",
+                "circle"
+            );
+
+        circle.setAttribute(
+            "r",
+            "13"
+        );
+
+        circle.setAttribute(
+            "class",
+            "corner-point"
+        );
+
+        svg.appendChild(circle);
+
+        circles.push(circle);
+
+    }
+
+
+    const preview =
+        document.createElement("img");
+
+    preview.className =
+        "preview-img";
+
+
+    const controls =
+        document.createElement("div");
+
+    controls.className =
+        "page-controls";
+
+
+    const flattenBtn =
+        document.createElement("button");
+
+    flattenBtn.className =
+        "flatten-btn";
+
+    flattenBtn.innerText =
+        "✔ 문서 보정 적용";
+
+
+    const revertBtn =
+        document.createElement("button");
+
+    revertBtn.className =
+        "revert-btn";
+
+    revertBtn.innerText =
+        "✂ 테두리 다시 조정";
+
+
+    controls.appendChild(
+        flattenBtn
+    );
+
+    controls.appendChild(
+        revertBtn
+    );
+
+
+    const ocrBtn =
+        document.createElement("button");
+
+    ocrBtn.className =
+        "ocr-btn";
+
+    ocrBtn.innerText =
+        "🔍 OCR 문자 추출";
+
+
+    const ocrResult =
+        document.createElement("textarea");
+
+    ocrResult.className =
+        "ocr-result";
+
+    ocrResult.placeholder =
+        "추출된 텍스트";
+
+
+    editor.appendChild(img);
+    editor.appendChild(svg);
+
+    wrapper.appendChild(
+        dragHandle
+    );
+
+    wrapper.appendChild(
+        removeBtn
+    );
+
+    wrapper.appendChild(
+        title
+    );
+
+    wrapper.appendChild(
+        editor
+    );
+
+    wrapper.appendChild(
+        preview
+    );
+
+    wrapper.appendChild(
+        controls
+    );
+
+    wrapper.appendChild(
+        ocrBtn
+    );
+
+    wrapper.appendChild(
+        ocrResult
+    );
+
+    workspace.appendChild(
+        wrapper
+    );
+
+
+    img.onload = () => {
+
+        setTimeout(() => {
+
+            const natW =
+                img.naturalWidth;
+
+            const natH =
+                img.naturalHeight;
+
+
+            /*
+               ★ 핵심 변경
+               자동 검출 결과를 실제 초기
+               4개 모서리로 사용
+            */
+
+            const detected =
+                detect4Corners(
+                    img
+                );
+
+
+            const normalizedPoints =
+                detected.map(
+                    p => ({
+                        x:p.x/natW,
+                        y:p.y/natH
+                    })
+                );
+
+
+            function updateUI(){
+
+                const cw =
+                    img.clientWidth;
+
+                const ch =
+                    img.clientHeight;
+
+                if(!cw || !ch)
+                    return;
+
+                svg.setAttribute(
+                    "viewBox",
+                    `0 0 ${cw} ${ch}`
+                );
+
+                const points =
+                    normalizedPoints
+                    .map(
+                        p =>
+                        `${p.x*cw},${p.y*ch}`
+                    )
+                    .join(" ");
+
+                polygon.setAttribute(
+                    "points",
+                    points
+                );
+
+                normalizedPoints
+                    .forEach(
+                        (p,i) => {
+
+                            circles[i]
+                                .setAttribute(
+                                    "cx",
+                                    p.x*cw
+                                );
+
+                            circles[i]
+                                .setAttribute(
+                                    "cy",
+                                    p.y*ch
+                                );
+
+                        }
+                    );
+
+            }
+
+
+            updateUI();
+
+            window.addEventListener(
+                "resize",
+                updateUI
+            );
+
+
+            let draggingIdx = -1;
+
+
+            svg.addEventListener(
+                "pointerdown",
+                e => {
+
+                    if(
+                        e.target.tagName
+                        !== "circle"
+                    )
+                        return;
+
+                    e.preventDefault();
+
+                    wrapper.draggable =
+                        false;
+
+                    draggingIdx =
+                        circles.indexOf(
+                            e.target
+                        );
+
+                    magnifier.style
+                        .backgroundImage =
+                        `url(${img.src})`;
+
+                    magnifier.style.display =
+                        "block";
+
+                    try{
+                        e.target.setPointerCapture(
+                            e.pointerId
+                        );
+                    }catch(err){}
+
+                }
+            );
+
+
+            svg.addEventListener(
+                "pointermove",
+                e => {
+
+                    if(
+                        draggingIdx === -1
+                    )
+                        return;
+
+                    e.preventDefault();
+
+                    const rect =
+                        img.getBoundingClientRect();
+
+                    const cw =
+                        img.clientWidth;
+
+                    const ch =
+                        img.clientHeight;
+
+                    let x =
+                        e.clientX -
+                        rect.left;
+
+                    let y =
+                        e.clientY -
+                        rect.top;
+
+                    x =
+                        Math.max(
+                            0,
+                            Math.min(
+                                x,
+                                cw
+                            )
+                        );
+
+                    y =
+                        Math.max(
+                            0,
+                            Math.min(
+                                y,
+                                ch
+                            )
+                        );
+
+                    normalizedPoints[
+                        draggingIdx
+                    ] = {
+
+                        x:x/cw,
+                        y:y/ch
+
+                    };
+
+                    updateUI();
+
+
+                    magnifier.style.left =
+                        `${e.clientX-55}px`;
+
+                    magnifier.style.top =
+                        `${e.clientY-125}px`;
+
+                    const bgX =
+                        normalizedPoints[
+                            draggingIdx
+                        ].x*natW;
+
+                    const bgY =
+                        normalizedPoints[
+                            draggingIdx
+                        ].y*natH;
+
+                    magnifier.style
+                        .backgroundSize =
+                        `${natW}px ${natH}px`;
+
+                    magnifier.style
+                        .backgroundPosition =
+                        `-${bgX-55}px -${bgY-55}px`;
+
+                }
+            );
+
+
+            function endDrag(){
+
+                draggingIdx = -1;
+
+                wrapper.draggable =
+                    true;
+
+                magnifier.style.display =
+                    "none";
+
+            }
+
+
+            svg.addEventListener(
+                "pointerup",
+                endDrag
+            );
+
+            svg.addEventListener(
+                "pointercancel",
+                endDrag
+            );
+
+
+            docInstances[id] = {
+
+                imgElement:img,
+
+                getNormalizedPoints:
+                    () => normalizedPoints,
+
+                processedData:null
+
+            };
+
+
+            updateControlsVisibility();
+
+        },100);
+
+    };
+
+
+    flattenBtn.addEventListener(
+        "click",
+        () => {
+
+            const filterType =
+                document.querySelector(
+                    'input[name="filter_type"]:checked'
+                ).value;
+
+            loadingOverlay.style.display =
+                "flex";
+
+            setTimeout(() => {
+
+                try{
+
+                    const result =
+                        processSingleImage(
+                            docInstances[id],
+                            filterType
+                        );
+
+                    preview.src =
+                        result.data;
+
+                    docInstances[id]
+                        .processedData =
+                        result;
+
+                    editor.style.display =
+                        "none";
+
+                    preview.style.display =
+                        "block";
+
+                    flattenBtn.style.display =
+                        "none";
+
+                    revertBtn.style.display =
+                        "block";
+
+                    ocrBtn.style.display =
+                        "block";
+
+                    wrapper.style.borderColor =
+                        "#28a745";
+
+                }
+
+                catch(error){
+
+                    console.error(error);
+
+                    alert(
+                        "문서 보정 중 오류가 발생했습니다."
+                    );
+
+                }
+
+                loadingOverlay.style.display =
+                    "none";
+
+            },50);
+
+        }
+    );
+
+
+    revertBtn.addEventListener(
+        "click",
+        () => {
+
+            editor.style.display =
+                "inline-block";
+
+            preview.style.display =
+                "none";
+
+            flattenBtn.style.display =
+                "block";
+
+            revertBtn.style.display =
+                "none";
+
+            ocrBtn.style.display =
+                "none";
+
+            ocrResult.style.display =
+                "none";
+
+            docInstances[id]
+                .processedData =
+                null;
+
+            wrapper.style.borderColor =
+                "#ddd";
+
+        }
+    );
+
+
+    removeBtn.addEventListener(
+        "click",
+        () => {
+
+            wrapper.remove();
+
+            delete docInstances[id];
+
+            updateControlsVisibility();
+
+        }
+    );
+
+
+    ocrBtn.addEventListener(
+        "click",
+        async () => {
+
+            const instance =
+                docInstances[id];
+
+            if(
+                !instance ||
+                !instance.processedData
+            )
+                return;
+
+            ocrBtn.disabled =
+                true;
+
+            ocrBtn.innerText =
+                "⏳ OCR 처리 중...";
+
+            try{
+
+                const result =
+                    await Tesseract.recognize(
+                        instance
+                            .processedData
+                            .data,
+                        "kor+eng"
+                    );
+
+                ocrResult.style.display =
+                    "block";
+
+                ocrResult.value =
+                    result.data.text.trim() ||
+                    "인식된 텍스트가 없습니다.";
+
+            }
+
+            catch(error){
+
+                alert(
+                    "OCR 처리에 실패했습니다."
+                );
+
+            }
+
+            ocrBtn.disabled =
+                false;
+
+            ocrBtn.innerText =
+                "🔍 OCR 문자 추출";
+
+        }
+    );
+
+}
+
+
+/* =========================================
+   PDF
+========================================= */
+
+generatePdfBtn.addEventListener(
+    "click",
+    async () => {
+
+        const wrappers =
+            document.querySelectorAll(
+                ".doc-wrapper"
+            );
+
+        if(!wrappers.length)
+            return;
+
+        const unprocessed =
+            Array.from(wrappers)
+            .filter(
+                w =>
+                !docInstances[w.id]
+                .processedData
+            );
+
+        if(unprocessed.length){
+
+            alert(
+                "아직 보정하지 않은 문서가 있습니다.\n" +
+                "각 페이지의 [문서 보정 적용]을 눌러 주세요."
+            );
+
+            return;
+
+        }
+
+        loadingOverlay.style.display =
+            "flex";
+
+        setTimeout(
+            async () => {
+
+                try{
+
+                    const {jsPDF} =
+                        window.jspdf;
+
+                    const pdf =
+                        new jsPDF(
+                            "p",
+                            "mm",
+                            "a4"
+                        );
+
+                    const pdfW =
+                        pdf.internal
+                        .pageSize
+                        .getWidth();
+
+                    const pdfH =
+                        pdf.internal
+                        .pageSize
+                        .getHeight();
+
+                    const margin =
+                        10;
+
+                    const usableW =
+                        pdfW-margin*2;
+
+                    const usableH =
+                        pdfH-margin*2;
+
+
+                    wrappers.forEach(
+                        (wrapper,index) => {
+
+                            if(index>0)
+                                pdf.addPage();
+
+                            const result =
+                                docInstances[
+                                    wrapper.id
+                                ].processedData;
+
+                            const ratio =
+                                result.width /
+                                result.height;
+
+                            let w =
+                                usableW;
+
+                            let h =
+                                w/ratio;
+
+                            if(h>usableH){
+
+                                h =
+                                    usableH;
+
+                                w =
+                                    h*ratio;
+
+                            }
+
+                            const x =
+                                margin +
+                                (
+                                    usableW-w
+                                )/2;
+
+                            const y =
+                                margin +
+                                (
+                                    usableH-h
+                                )/2;
+
+                            pdf.addImage(
+                                result.data,
+                                "JPEG",
+                                x,
+                                y,
+                                w,
+                                h
+                            );
+
+                        }
+                    );
+
+
+                    const date =
+                        new Date()
+                        .toISOString()
+                        .slice(0,10);
+
+                    const defaultName =
+                        `스캔문서_${date}.pdf`;
+
+
+                    if(
+                        window.showSaveFilePicker
+                    ){
+
+                        try{
+
+                            const handle =
+                                await
+                                window
+                                .showSaveFilePicker({
+
+                                    suggestedName:
+                                        defaultName,
+
+                                    types:[
+                                        {
+                                            description:
+                                                "PDF 파일",
+
+                                            accept:{
+                                                "application/pdf":
+                                                    [".pdf"]
+                                            }
+                                        }
+                                    ]
+
+                                });
+
+                            const writable =
+                                await handle
+                                .createWritable();
+
+                            await writable.write(
+                                pdf.output("blob")
+                            );
+
+                            await writable.close();
+
+                        }
+
+                        catch(e){
+
+                            if(
+                                e.name !==
+                                "AbortError"
+                            ){
+
+                                console.error(e);
+
+                            }
+
+                        }
+
+                    }
+
+                    else{
+
+                        pdf.save(
+                            defaultName
+                        );
+
+                    }
+
+                }
+
+                catch(error){
+
+                    console.error(error);
+
+                    alert(
+                        "PDF 생성 중 오류가 발생했습니다."
+                    );
+
+                }
+
+                loadingOverlay.style.display =
+                    "none";
+
+            },
+            100
+        );
+
+    }
+);
+
 </script>
+
 </body>
 </html>
