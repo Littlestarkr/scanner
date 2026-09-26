@@ -315,11 +315,12 @@
 
     function detect4Corners(imgElement) {
         let natW = imgElement.naturalWidth, natH = imgElement.naturalHeight;
+        // 🌟 사진 불러오기 시 문서 전체를 넉넉하게 감싸도록 가로 폭을 넓히고 여유 있게 설정
         let fallbackPoints = [
-            {x: natW * 0.1, y: natH * 0.03}, 
-            {x: natW * 0.9, y: natH * 0.03}, 
-            {x: natW * 0.9, y: natH * 0.97}, 
-            {x: natW * 0.1, y: natH * 0.97}
+            {x: natW * 0.03, y: natH * 0.02}, 
+            {x: natW * 0.97, y: natH * 0.02}, 
+            {x: natW * 0.97, y: natH * 0.98}, 
+            {x: natW * 0.03, y: natH * 0.98}
         ];
         try {
             const tC = document.createElement('canvas');
@@ -397,7 +398,6 @@
         }, { offset: Number.NEGATIVE_INFINITY }).element;
     }
 
-    // 🌟 조명 균일화 및 엣지 강조가 통합된 평탄화 연산 엔진
     function processSingleImage(instance, filterType) {
         const hiddenCanvas = document.getElementById('hidden-canvas');
         let natW = instance.imgElement.naturalWidth;
@@ -443,7 +443,6 @@
         if (filterType === 'bw') {
             cv.cvtColor(dst, dst, cv.COLOR_RGBA2GRAY, 0);
             
-            // 🌟 배경 조명 분할 (Background Division)을 통한 어두운 곳과 밝은 곳의 균일한 보정
             let bg = new cv.Mat();
             cv.GaussianBlur(dst, bg, new cv.Size(71, 71), 0, 0, cv.BORDER_DEFAULT);
             let normalized = new cv.Mat();
@@ -552,15 +551,8 @@
         
         img.onload = () => {
             setTimeout(() => {
-                const natW = img.naturalWidth;
-                const natH = img.naturalHeight;
-                
-                const normalizedPoints = [
-                    { x: 0.1, y: 0.03 },
-                    { x: 0.9, y: 0.03 },
-                    { x: 0.9, y: 0.97 },
-                    { x: 0.1, y: 0.97 }
-                ];
+                const originalPoints = detect4Corners(img);
+                const normalizedPoints = originalPoints.map(p => ({ x: p.x / img.naturalWidth, y: p.y / img.naturalHeight }));
                 
                 const updateUI = () => {
                     const cw = img.clientWidth;
@@ -602,9 +594,9 @@
 
                     magnifier.style.left = `${e.clientX - 50}px`;
                     magnifier.style.top = `${e.clientY - 120}px`; 
-                    const bgX = (x / cw) * natW;
-                    const bgY = (y / ch) * natH;
-                    magnifier.style.backgroundSize = `${natW}px ${natH}px`;
+                    const bgX = (x / cw) * img.naturalWidth;
+                    const bgY = (y / ch) * img.naturalHeight;
+                    magnifier.style.backgroundSize = `${img.naturalWidth}px ${img.naturalHeight}px`;
                     magnifier.style.backgroundPosition = `-${bgX - 50}px -${bgY - 50}px`;
                 });
                 
