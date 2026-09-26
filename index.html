@@ -77,14 +77,15 @@
         .drag-handle { background: #eee; padding: 8px; cursor: grab; font-size: 0.9rem; font-weight: bold; color: #555; margin-bottom: 10px; border-radius: 4px; }
         .remove-btn { position: absolute; top: 10px; right: 10px; background: #dc3545; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 0.8rem; z-index: 10; }
         
-        .editor-container { position: relative; display: inline-block; overflow: visible; background: #eee; line-height: 0; touch-action: none; max-width: 100%; margin: 15px 0; }
-        .editor-container img { max-width: 100%; height: auto; display: block; margin: 0; pointer-events: none; user-select: none; -webkit-user-drag: none; }
+        /* 편집 영역 3:4 세로형 비율 유지 */
+        .editor-container { position: relative; display: inline-block; overflow: visible; background: #eee; line-height: 0; touch-action: none; width: 100%; max-width: 450px; aspect-ratio: 3 / 4; margin: 15px auto; }
+        .editor-container img { width: 100%; height: 100%; object-fit: contain; display: block; margin: 0; pointer-events: none; user-select: none; -webkit-user-drag: none; }
         .editor-svg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: auto; overflow: visible; }
         .poly-line { fill: rgba(0, 123, 255, 0.2); stroke: #007bff; stroke-width: 2; pointer-events: none; }
         .corner-point { fill: #007bff; stroke: white; stroke-width: 3; cursor: grab; r: 22; }
         .corner-point:active { cursor: grabbing; fill: #0056b3; }
         
-        .preview-img { max-width: 100%; height: auto; border: 1px solid #ccc; display: none; margin-bottom: 10px; }
+        .preview-img { width: 100%; max-width: 450px; aspect-ratio: 3 / 4; object-fit: contain; border: 1px solid #ccc; display: none; margin: 15px auto; }
         
         .page-controls { display: flex; gap: 10px; margin-bottom: 10px; }
         .flatten-btn { flex: 1; padding: 8px; background: #17a2b8; color: white; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; }
@@ -102,9 +103,9 @@
         .radio-group { display: flex; justify-content: center; gap: 20px; flex-wrap: wrap; }
         .radio-item { cursor: pointer; font-size: 0.95rem; color: #555; display: flex; align-items: center; gap: 5px; }
         
-        /* 🌟 카메라 촬영 화면 비율 수정 (3:4 세로형 최적화) */
+        /* 카메라 촬영 화면 비율 3:4 고정 */
         #camera-section { display: none; flex-direction: column; align-items: center; justify-content: center; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000; z-index: 2000; }
-        .video-container { position: relative; width: 100%; max-height: 80vh; aspect-ratio: 3 / 4; display: flex; flex-direction: column; align-items: center; background: #111; overflow: hidden; }
+        .video-container { position: relative; width: 100%; max-height: 75vh; aspect-ratio: 3 / 4; display: flex; flex-direction: column; align-items: center; background: #111; overflow: hidden; }
         #camera-stream { width: 100%; height: 100%; object-fit: cover; cursor: crosshair; }
         .focus-ring { position: absolute; width: 60px; height: 60px; border: 2px solid #28a745; border-radius: 50%; display: none; transform: translate(-50%, -50%); pointer-events: none; transition: transform 0.2s, opacity 0.2s; box-shadow: 0 0 10px rgba(0,255,0,0.5); z-index: 2002; }
         #focus-hint { color: rgba(255,255,255,0.7); position: absolute; top: 20px; font-size: 0.9rem; text-align: center; width: 100%; pointer-events: none; z-index: 2002; }
@@ -414,7 +415,7 @@
         
         let tl = pts[0], tr = pts[1], br = pts[2], bl = pts[3];
         let maxWidth = Math.max(Math.sqrt(Math.pow(br.x - bl.x, 2) + Math.pow(br.y - bl.y, 2)), Math.sqrt(Math.pow(tr.x - tl.x, 2) + Math.pow(tr.y - tl.y, 2)));
-        let maxHeight = Math.max(Math.sqrt(Math.pow(tr.x - br.x, 2) + Math.pow(tr.y - by.y, 2)), Math.sqrt(Math.pow(tl.x - bl.x, 2) + Math.pow(tl.y - bl.y, 2)));
+        let maxHeight = Math.max(Math.sqrt(Math.pow(tr.x - br.x, 2) + Math.pow(tr.y - br.y, 2)), Math.sqrt(Math.pow(tl.x - bl.x, 2) + Math.pow(tl.y - bl.y, 2)));
         
         let srcTri = cv.matFromArray(4, 1, cv.CV_32FC2, [tl.x, tl.y, tr.x, tr.y, br.x, br.y, bl.x, bl.y]);
         let dstTri = cv.matFromArray(4, 1, cv.CV_32FC2, [0, 0, maxWidth, 0, maxWidth, maxHeight, 0, maxHeight]);
