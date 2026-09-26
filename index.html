@@ -77,11 +77,14 @@
         .drag-handle { background: #eee; padding: 8px; cursor: grab; font-size: 0.9rem; font-weight: bold; color: #555; margin-bottom: 10px; border-radius: 4px; }
         .remove-btn { position: absolute; top: 10px; right: 10px; background: #dc3545; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 0.8rem; z-index: 10; }
         
-        .editor-container { position: relative; display: inline-block; overflow: hidden; background: #eee; line-height: 0; touch-action: none; max-width: 100%; margin-bottom: 10px; }
+        /* 편집 영역 주변 여백 확보 */
+        .editor-container { position: relative; display: inline-block; overflow: visible; background: #eee; line-height: 0; touch-action: none; max-width: 100%; margin: 15px 0; }
         .editor-container img { max-width: 100%; height: auto; display: block; margin: 0; pointer-events: none; user-select: none; -webkit-user-drag: none; }
-        .editor-svg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: auto; }
+        .editor-svg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: auto; overflow: visible; }
         .poly-line { fill: rgba(0, 123, 255, 0.2); stroke: #007bff; stroke-width: 2; pointer-events: none; }
-        .corner-point { fill: #007bff; stroke: white; stroke-width: 3; cursor: grab; }
+        
+        /* 🌟 조절 점(Corner Point) 크기 확대 및 터치 영역 개선 */
+        .corner-point { fill: #007bff; stroke: white; stroke-width: 3; cursor: grab; r: 22; }
         .corner-point:active { cursor: grabbing; fill: #0056b3; }
         
         .preview-img { max-width: 100%; height: auto; border: 1px solid #ccc; display: none; margin-bottom: 10px; }
@@ -391,7 +394,6 @@
         }, { offset: Number.NEGATIVE_INFINITY }).element;
     }
 
-    // 🌟 획 뭉개짐을 방지하고 그림자만 지우는 고급 조명 평탄화(Background Division) 알고리즘
     function processSingleImage(instance, filterType) {
         const hiddenCanvas = document.getElementById('hidden-canvas');
         let natW = instance.imgElement.naturalWidth;
@@ -425,18 +427,12 @@
         
         if (filterType === 'bw') {
             cv.cvtColor(dst, dst, cv.COLOR_RGBA2GRAY, 0);
-            
-            // 🌟 배경 조명 평탄화 (Background Division): 대형 블러로 배경 그림자를 추출한 뒤 원본을 나누어 그림자 제거
             let bg = new cv.Mat();
             cv.GaussianBlur(dst, bg, new cv.Size(51, 51), 0, 0, cv.BORDER_DEFAULT);
-            
             let normalized = new cv.Mat();
             cv.divide(dst, bg, normalized, 255, cv.CV_8UC1);
-            
-            // 미세 가우시안 블러 및 부드러운 임계값 처리로 획 갈라짐/뭉개짐 방지
             cv.GaussianBlur(normalized, normalized, new cv.Size(3, 3), 0, 0, cv.BORDER_DEFAULT);
             cv.threshold(normalized, dst, 200, 255, cv.THRESH_BINARY);
-            
             bg.delete();
             normalized.delete();
         } else {
@@ -488,7 +484,8 @@
         const circles = [];
         for (let i = 0; i < 4; i++) {
             const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-            circle.setAttribute('r', '18'); 
+            // r 속성을 키워 터치 영역 확보
+            circle.setAttribute('r', '22'); 
             circle.setAttribute('class', 'corner-point');
             svg.appendChild(circle);
             circles.push(circle);
