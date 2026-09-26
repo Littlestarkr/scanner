@@ -315,8 +315,8 @@
 
     function detect4Corners(imgElement) {
         let natW = imgElement.naturalWidth, natH = imgElement.naturalHeight;
-        // 🌟 사진 불러오기 시 문서 전체를 넉넉하게 감싸도록 가로 폭을 넓히고 여유 있게 설정
-        let fallbackPoints = [
+        // 🌟 자동 감지가 실패하거나 좁은 영역을 잡을 경우를 대비해 문서 전체를 넉넉하게 감싸는 기본 좌표 강제 지정
+        let safePoints = [
             {x: natW * 0.03, y: natH * 0.02}, 
             {x: natW * 0.97, y: natH * 0.02}, 
             {x: natW * 0.97, y: natH * 0.98}, 
@@ -329,7 +329,7 @@
             tC.getContext('2d').drawImage(imgElement, 0, 0, tC.width, tC.height);
 
             let src = cv.imread(tC);
-            if (src.empty()) { src.delete(); return fallbackPoints; }
+            if (src.empty()) { src.delete(); return safePoints; }
             let gray = new cv.Mat(), edges = new cv.Mat();
             cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY, 0);
             cv.GaussianBlur(gray, gray, new cv.Size(5, 5), 0, 0, cv.BORDER_DEFAULT);
@@ -342,7 +342,8 @@
             for (let i = 0; i < contours.size(); ++i) {
                 let cnt = contours.get(i);
                 let area = cv.contourArea(cnt);
-                if (area > (tC.width * tC.height * 0.05)) { 
+                // 🌟 너무 작게 잡힌 영역(전체 면적의 20% 미만)은 무시하여 항상 전체 문서가 잡히도록 보장
+                if (area > (tC.width * tC.height * 0.20)) { 
                     let approx = new cv.Mat();
                     cv.approxPolyDP(cnt, approx, 0.02 * cv.arcLength(cnt, true), true);
                     if (approx.rows === 4 && area > maxArea) {
@@ -350,11 +351,11 @@
                     } else approx.delete();
                 }
             }
-            let points = bestApprox ? Array.from({length: 4}, (_, i) => ({x: bestApprox.data32S[i*2]/scale, y: bestApprox.data32S[i*2+1]/scale})) : fallbackPoints;
+            let points = bestApprox ? Array.from({length: 4}, (_, i) => ({x: bestApprox.data32S[i*2]/scale, y: bestApprox.data32S[i*2+1]/scale})) : safePoints;
             if(bestApprox) bestApprox.delete();
             src.delete(); gray.delete(); edges.delete(); contours.delete(); hierarchy.delete();
             return sortCorners(points);
-        } catch (e) { return fallbackPoints; }
+        } catch (e) { return safePoints; }
     }
 
     function updateControlsVisibility() {
