@@ -313,19 +313,6 @@
         return [top[0], top[1], bottom[0], bottom[1]];
     }
 
-    function detect4Corners(imgElement) {
-        let natW = imgElement.naturalWidth, natH = imgElement.naturalHeight;
-        
-        // 🌟 무조건 3:4 세로형 표준 비율(좌우 3%, 상하 2% 여백)로 초기 4점 좌표 강제 고정
-        let safePoints = [
-            {x: natW * 0.03, y: natH * 0.02}, 
-            {x: natW * 0.97, y: natH * 0.02}, 
-            {x: natW * 0.97, y: natH * 0.98}, 
-            {x: natW * 0.03, y: natH * 0.98}
-        ];
-        return safePoints;
-    }
-
     function updateControlsVisibility() {
         if (workspace.children.length > 0) {
             generatePdfBtn.style.display = 'block';
@@ -520,8 +507,16 @@
         
         img.onload = () => {
             setTimeout(() => {
-                const originalPoints = detect4Corners(img);
-                const normalizedPoints = originalPoints.map(p => ({ x: p.x / img.naturalWidth, y: p.y / img.naturalHeight }));
+                const natW = img.naturalWidth;
+                const natH = img.naturalHeight;
+                
+                // 🌟 무조건 3:4 세로형 표준 비율(좌우 가로 폭을 문서 전체의 3%~97%까지 넓게 확장)로 강제 고정
+                const normalizedPoints = [
+                    { x: 0.03, y: 0.02 },
+                    { x: 0.97, y: 0.02 },
+                    { x: 0.97, y: 0.98 },
+                    { x: 0.03, y: 0.98 }
+                ];
                 
                 const updateUI = () => {
                     const cw = img.clientWidth;
@@ -563,9 +558,9 @@
 
                     magnifier.style.left = `${e.clientX - 50}px`;
                     magnifier.style.top = `${e.clientY - 120}px`; 
-                    const bgX = (x / cw) * img.naturalWidth;
-                    const bgY = (y / ch) * img.naturalHeight;
-                    magnifier.style.backgroundSize = `${img.naturalWidth}px ${img.naturalHeight}px`;
+                    const bgX = (x / cw) * natW;
+                    const bgY = (y / ch) * natH;
+                    magnifier.style.backgroundSize = `${natW}px ${natH}px`;
                     magnifier.style.backgroundPosition = `-${bgX - 50}px -${bgY - 50}px`;
                 });
                 
