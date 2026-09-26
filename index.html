@@ -144,7 +144,7 @@
         <div class="settings-row">
             <span class="settings-label">1. 스캔 필터 (평탄화 적용 시 작동)</span>
             <div class="radio-group">
-                <label class="radio-item"><input type="radio" name="filter_type" value="bw" checked> 📝 고대비 흑백 (선명도 극대화)</label>
+                <label class="radio-item"><input type="radio" name="filter_type" value="bw" checked> 📝 고대비 흑백 (조명 평탄화 적용)</label>
                 <label class="radio-item"><input type="radio" name="filter_type" value="color"> 🎨 선명한 컬러</label>
             </div>
         </div>
@@ -200,7 +200,7 @@
 
     function onOpenCvReady() {
         cvReady = true;
-        cvStatusDisplay.innerText = "✓ 비전 엔진 준비 완료 (고선명 필터 활성화)";
+        cvStatusDisplay.innerText = "✓ 비전 엔진 준비 완료 (조명 균일화 필터 활성화)";
         cvStatusDisplay.style.color = "#28a745";
         document.getElementById('file-input').disabled = false;
         document.getElementById('open-camera-btn').disabled = false;
@@ -397,7 +397,7 @@
         }, { offset: Number.NEGATIVE_INFINITY }).element;
     }
 
-    // 🌟 내부 문자의 수평 및 기울기를 완벽히 보정하여 반듯한 직사각형으로 펴주는 평탄화 연산 엔진
+    // 🌟 조명 균일화 및 엣지 강조가 통합된 평탄화 연산 엔진
     function processSingleImage(instance, filterType) {
         const hiddenCanvas = document.getElementById('hidden-canvas');
         let natW = instance.imgElement.naturalWidth;
@@ -420,7 +420,6 @@
         
         let tl = pts[0], tr = pts[1], br = pts[2], bl = pts[3];
         
-        // 🌟 상단과 하단 가로변, 좌우 세로변의 길이를 정밀하게 평균 내어 사다리꼴 왜곡을 완전한 직사각형으로 교정
         let topWidth = Math.sqrt(Math.pow(tr.x - tl.x, 2) + Math.pow(tr.y - tl.y, 2));
         let bottomWidth = Math.sqrt(Math.pow(br.x - bl.x, 2) + Math.pow(br.y - bl.y, 2));
         let leftHeight = Math.sqrt(Math.pow(bl.x - tl.x, 2) + Math.pow(bl.y - tl.y, 2));
@@ -429,7 +428,6 @@
         let targetWidth = Math.round((topWidth + bottomWidth) / 2);
         let targetHeight = Math.round((leftHeight + rightHeight) / 2);
         
-        // 교재/문서의 표준 세로비율(3:4 = 가로의 약 1.33배)을 보장하여 글자가 수평으로 반듯하게 정렬되도록 조정
         let minExpectedHeight = Math.round(targetWidth * 1.33);
         if (targetHeight < minExpectedHeight) {
             targetHeight = minExpectedHeight;
@@ -445,18 +443,18 @@
         if (filterType === 'bw') {
             cv.cvtColor(dst, dst, cv.COLOR_RGBA2GRAY, 0);
             
-            let blurred = new cv.Mat();
-            cv.GaussianBlur(dst, blurred, new cv.Size(0, 0), 3);
-            cv.addWeighted(dst, 1.6, blurred, -0.6, 0, dst);
-            blurred.delete();
-
+            // 🌟 배경 조명 분할 (Background Division)을 통한 어두운 곳과 밝은 곳의 균일한 보정
             let bg = new cv.Mat();
-            cv.GaussianBlur(dst, bg, new cv.Size(51, 51), 0, 0, cv.BORDER_DEFAULT);
+            cv.GaussianBlur(dst, bg, new cv.Size(71, 71), 0, 0, cv.BORDER_DEFAULT);
             let normalized = new cv.Mat();
             cv.divide(dst, bg, normalized, 255, cv.CV_8UC1);
             
-            cv.GaussianBlur(normalized, normalized, new cv.Size(3, 3), 0, 0, cv.BORDER_DEFAULT);
-            cv.threshold(normalized, dst, 190, 255, cv.THRESH_BINARY);
+            let blurred = new cv.Mat();
+            cv.GaussianBlur(normalized, blurred, new cv.Size(0, 0), 3);
+            cv.addWeighted(normalized, 1.5, blurred, -0.5, 0, normalized);
+            blurred.delete();
+
+            cv.threshold(normalized, dst, 195, 255, cv.THRESH_BINARY);
             
             bg.delete();
             normalized.delete();
@@ -557,7 +555,6 @@
                 const natW = img.naturalWidth;
                 const natH = img.naturalHeight;
                 
-                // 🌟 세로형 교재 비율에 맞추어 상하가 절대 잘리지 않도록 초기 4점 영역을 넉넉하게 지정
                 const normalizedPoints = [
                     { x: 0.1, y: 0.03 },
                     { x: 0.9, y: 0.03 },
