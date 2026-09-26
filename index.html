@@ -77,15 +77,15 @@
         .drag-handle { background: #eee; padding: 8px; cursor: grab; font-size: 0.9rem; font-weight: bold; color: #555; margin-bottom: 10px; border-radius: 4px; }
         .remove-btn { position: absolute; top: 10px; right: 10px; background: #dc3545; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 0.8rem; z-index: 10; }
         
-        /* 🌟 에디터 영역 자체를 3:4 세로형 직사각형 비율로 완벽히 강제 고정 */
+        /* 🌟 3:4 카메라 규격에 완벽히 동기화된 에디터 컨테이너 */
         .editor-container { position: relative; display: inline-block; overflow: visible; background: #eee; line-height: 0; touch-action: none; width: 100%; max-width: 400px; aspect-ratio: 3 / 4; margin: 15px auto; }
-        .editor-container img { width: 100%; height: 100%; object-fit: contain; display: block; margin: 0; pointer-events: none; user-select: none; -webkit-user-drag: none; }
+        .editor-container img { width: 100%; height: 100%; object-fit: fill; display: block; margin: 0; pointer-events: none; user-select: none; -webkit-user-drag: none; }
         .editor-svg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: auto; overflow: visible; }
         .poly-line { fill: rgba(0, 123, 255, 0.2); stroke: #007bff; stroke-width: 2; pointer-events: none; }
         .corner-point { fill: #007bff; stroke: white; stroke-width: 3; cursor: grab; r: 22; }
         .corner-point:active { cursor: grabbing; fill: #0056b3; }
         
-        .preview-img { width: 100%; max-width: 400px; aspect-ratio: 3 / 4; object-fit: contain; border: 1px solid #ccc; display: none; margin: 15px auto; }
+        .preview-img { width: 100%; max-width: 400px; aspect-ratio: 3 / 4; object-fit: fill; border: 1px solid #ccc; display: none; margin: 15px auto; }
         
         .page-controls { display: flex; gap: 10px; margin-bottom: 10px; }
         .flatten-btn { flex: 1; padding: 8px; background: #17a2b8; color: white; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; }
@@ -317,12 +317,12 @@
     function detect4Corners(imgElement) {
         let natW = imgElement.naturalWidth, natH = imgElement.naturalHeight;
         
-        // 🌟 3:4 세로형 표준 비율(좌우 가로 폭을 문서 전체의 3%~97%까지 넓게 확장)로 강제 고정
+        // 🌟 3:4 카메라 규격에 완벽히 맞춘 3:4 세로형 초기 4점 좌표 (좌우 2%, 상하 2% 여백)
         let safePoints = [
-            {x: natW * 0.03, y: natH * 0.02}, 
-            {x: natW * 0.97, y: natH * 0.02}, 
-            {x: natW * 0.97, y: natH * 0.98}, 
-            {x: natW * 0.03, y: natH * 0.98}
+            {x: natW * 0.02, y: natH * 0.02}, 
+            {x: natW * 0.98, y: natH * 0.02}, 
+            {x: natW * 0.98, y: natH * 0.98}, 
+            {x: natW * 0.02, y: natH * 0.98}
         ];
         return safePoints;
     }
