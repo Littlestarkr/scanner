@@ -12,7 +12,6 @@
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
     
     <script>
-        // 🌟 인앱 브라우저 강력 차단 및 크롬 강제 전환 로직
         function detectAndRedirectInApp() {
             var ua = navigator.userAgent.toLowerCase();
             var isKakao = ua.match(/kakaotalk/i);
@@ -20,17 +19,13 @@
             var isInApp = isKakao || isNaver || ua.match(/(line|instagram|facebook|fb|everytime|daum)/i);
 
             if (isInApp) {
-                // 안드로이드 환경: Intent를 사용하여 구글 크롬 강제 실행
                 if (navigator.userAgent.match(/android/i)) {
                     var url = location.href.replace(/https?:\/\//i, '');
                     location.href = 'intent://' + url + '#Intent;scheme=https;package=com.android.chrome;end';
-                } 
-                // iOS 카카오톡 환경: 카카오톡 전용 외부 브라우저 호출 스킴
-                else if (isKakao) {
+                } else if (isKakao) {
                     location.href = 'kakaotalk://web/openExternal?url=' + encodeURIComponent(location.href);
                 }
 
-                // 강제 전환이 실패했을 경우를 대비한 화면 덮기 안내 UI
                 window.addEventListener('DOMContentLoaded', function() {
                     var overlay = document.createElement('div');
                     overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.95);z-index:9999;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;text-align:center;box-sizing:border-box;';
@@ -76,14 +71,12 @@
         .btn-action:hover { background: #004494; }
         input[type="file"] { display: none; }
         
-        /* 작업 공간 및 드래그 앤 드롭 UI */
         #workspace { display: flex; flex-direction: column; gap: 20px; margin-bottom: 20px; }
         .doc-wrapper { border: 1px solid #ddd; padding: 15px; border-radius: 6px; background: #fff; position: relative; text-align: center; transition: box-shadow 0.2s; }
         .doc-wrapper.dragging { opacity: 0.5; box-shadow: 0 5px 15px rgba(0,0,0,0.2); }
         .drag-handle { background: #eee; padding: 8px; cursor: grab; font-size: 0.9rem; font-weight: bold; color: #555; margin-bottom: 10px; border-radius: 4px; }
         .remove-btn { position: absolute; top: 10px; right: 10px; background: #dc3545; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 0.8rem; z-index: 10; }
         
-        /* 4점 보정 UI */
         .editor-container { position: relative; display: inline-block; overflow: hidden; background: #eee; line-height: 0; touch-action: none; max-width: 100%; margin-bottom: 10px; }
         .editor-container img { max-width: 100%; height: auto; display: block; margin: 0; pointer-events: none; user-select: none; -webkit-user-drag: none; }
         .editor-svg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: auto; }
@@ -91,30 +84,24 @@
         .corner-point { fill: #007bff; stroke: white; stroke-width: 3; cursor: grab; }
         .corner-point:active { cursor: grabbing; fill: #0056b3; }
         
-        /* 평탄화된 결과 이미지 프리뷰 */
         .preview-img { max-width: 100%; height: auto; border: 1px solid #ccc; display: none; margin-bottom: 10px; }
         
-        /* 개별 페이지 제어 버튼 */
         .page-controls { display: flex; gap: 10px; margin-bottom: 10px; }
         .flatten-btn { flex: 1; padding: 8px; background: #17a2b8; color: white; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; }
         .flatten-btn:hover { background: #138496; }
         .revert-btn { flex: 1; padding: 8px; background: #6c757d; color: white; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; display: none; }
         
-        /* 정밀 돋보기 UI */
         #magnifier { position: fixed; width: 100px; height: 100px; border: 3px solid #007bff; border-radius: 50%; background-color: #fff; background-repeat: no-repeat; display: none; pointer-events: none; z-index: 4000; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
         
-        /* OCR 텍스트 추출 영역 */
         .ocr-btn { padding: 8px 15px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9rem; font-weight: bold; width: 100%; display: none; }
         .ocr-result { width: 100%; height: 100px; padding: 10px; box-sizing: border-box; resize: vertical; display: none; margin-top: 10px; font-family: inherit; border: 1px solid #ccc; border-radius: 4px; }
         
-        /* 스캔 품질 및 용량 설정 UI */
         #settings-panel { display: none; text-align: center; margin-bottom: 20px; background: #fff; padding: 15px; border-radius: 6px; border: 1px solid #ddd; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
         .settings-row { margin-bottom: 15px; }
         .settings-label { font-weight: bold; margin-right: 15px; color: #333; display: block; margin-bottom: 10px; font-size: 1rem; text-align: left; }
         .radio-group { display: flex; justify-content: center; gap: 20px; flex-wrap: wrap; }
         .radio-item { cursor: pointer; font-size: 0.95rem; color: #555; display: flex; align-items: center; gap: 5px; }
         
-        /* 카메라 관련 UI */
         #camera-section { display: none; flex-direction: column; align-items: center; justify-content: center; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000; z-index: 2000; }
         .video-container { position: relative; width: 100%; max-height: 75vh; display: flex; flex-direction: column; align-items: center; background: #111; overflow: hidden; }
         #camera-stream { width: 100%; max-height: 75vh; object-fit: contain; cursor: crosshair; }
@@ -122,7 +109,6 @@
         #focus-hint { color: rgba(255,255,255,0.7); position: absolute; top: 20px; font-size: 0.9rem; text-align: center; width: 100%; pointer-events: none; z-index: 2002; }
         #cam-status { color: #fff; position: absolute; top: 10px; right: 10px; font-size: 1rem; font-weight: bold; z-index: 2002; background: rgba(0,0,0,0.5); padding: 5px 10px; border-radius: 4px; }
         
-        /* 좌측 하단 썸네일 스트립 */
         #cam-thumbnails { position: absolute; bottom: 15px; left: 15px; display: flex; gap: 10px; max-width: calc(100% - 30px); overflow-x: auto; z-index: 2010; padding: 5px; box-sizing: border-box; background: rgba(0,0,0,0.4); border-radius: 6px; }
         #cam-thumbnails::-webkit-scrollbar { display: none; }
         .thumb-item { position: relative; width: 50px; height: 66px; flex-shrink: 0; border: 2px solid #fff; border-radius: 4px; overflow: hidden; background: #000; box-shadow: 0 2px 5px rgba(0,0,0,0.5); }
@@ -310,6 +296,7 @@
         tempCapturedImages.forEach(dataUrl => createEditorForImage(dataUrl));
     });
 
+    // 🌟 사진 불러오기(파일 업로드) 시에도 동일한 4점 편집기 생성하도록 통합
     document.getElementById('file-input').addEventListener('change', (e) => {
         Array.from(e.target.files).forEach(file => {
             const reader = new FileReader();
