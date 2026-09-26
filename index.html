@@ -315,7 +315,6 @@
 
     function detect4Corners(imgElement) {
         let natW = imgElement.naturalWidth, natH = imgElement.naturalHeight;
-        // 🌟 세로형 문서 비율(3:4)에 맞춘 안전 기본 4점 영역 (상하 짤림 방지)
         let fallbackPoints = [
             {x: natW * 0.1, y: natH * 0.03}, 
             {x: natW * 0.9, y: natH * 0.03}, 
@@ -398,6 +397,7 @@
         }, { offset: Number.NEGATIVE_INFINITY }).element;
     }
 
+    // 🌟 내부 문자의 수평 및 기울기를 완벽히 보정하여 반듯한 직사각형으로 펴주는 평탄화 연산 엔진
     function processSingleImage(instance, filterType) {
         const hiddenCanvas = document.getElementById('hidden-canvas');
         let natW = instance.imgElement.naturalWidth;
@@ -420,24 +420,27 @@
         
         let tl = pts[0], tr = pts[1], br = pts[2], bl = pts[3];
         
-        let widthTop = Math.sqrt(Math.pow(tr.x - tl.x, 2) + Math.pow(tr.y - tl.y, 2));
-        let widthBottom = Math.sqrt(Math.pow(br.x - bl.x, 2) + Math.pow(br.y - bl.y, 2));
-        let heightLeft = Math.sqrt(Math.pow(bl.x - tl.x, 2) + Math.pow(bl.y - tl.y, 2));
-        let heightRight = Math.sqrt(Math.pow(br.x - tr.x, 2) + Math.pow(br.y - tr.y, 2));
+        // 🌟 상단과 하단 가로변, 좌우 세로변의 길이를 정밀하게 평균 내어 사다리꼴 왜곡을 완전한 직사각형으로 교정
+        let topWidth = Math.sqrt(Math.pow(tr.x - tl.x, 2) + Math.pow(tr.y - tl.y, 2));
+        let bottomWidth = Math.sqrt(Math.pow(br.x - bl.x, 2) + Math.pow(br.y - bl.y, 2));
+        let leftHeight = Math.sqrt(Math.pow(bl.x - tl.x, 2) + Math.pow(bl.y - tl.y, 2));
+        let rightHeight = Math.sqrt(Math.pow(br.x - tr.x, 2) + Math.pow(br.y - tr.y, 2));
         
-        let maxWidth = Math.max(widthTop, widthBottom);
-        let maxHeight = Math.max(heightLeft, heightRight);
+        let targetWidth = Math.round((topWidth + bottomWidth) / 2);
+        let targetHeight = Math.round((leftHeight + rightHeight) / 2);
         
-        if (maxHeight < maxWidth * 1.2) {
-            maxHeight = Math.round(maxWidth * 1.333); 
+        // 교재/문서의 표준 세로비율(3:4 = 가로의 약 1.33배)을 보장하여 글자가 수평으로 반듯하게 정렬되도록 조정
+        let minExpectedHeight = Math.round(targetWidth * 1.33);
+        if (targetHeight < minExpectedHeight) {
+            targetHeight = minExpectedHeight;
         }
 
         let srcTri = cv.matFromArray(4, 1, cv.CV_32FC2, [tl.x, tl.y, tr.x, tr.y, br.x, br.y, bl.x, bl.y]);
-        let dstTri = cv.matFromArray(4, 1, cv.CV_32FC2, [0, 0, maxWidth, 0, maxWidth, maxHeight, 0, maxHeight]);
+        let dstTri = cv.matFromArray(4, 1, cv.CV_32FC2, [0, 0, targetWidth, 0, targetWidth, targetHeight, 0, targetHeight]);
         
         let dst = new cv.Mat();
         let M = cv.getPerspectiveTransform(srcTri, dstTri);
-        cv.warpPerspective(src, dst, M, new cv.Size(maxWidth, maxHeight), cv.INTER_LINEAR, cv.BORDER_CONSTANT, new cv.Scalar(255, 255, 255, 255));
+        cv.warpPerspective(src, dst, M, new cv.Size(targetWidth, targetHeight), cv.INTER_LINEAR, cv.BORDER_CONSTANT, new cv.Scalar(255, 255, 255, 255));
         
         if (filterType === 'bw') {
             cv.cvtColor(dst, dst, cv.COLOR_RGBA2GRAY, 0);
@@ -469,7 +472,7 @@
         const finalImgData = hiddenCanvas.toDataURL('image/jpeg', quality);
         
         src.delete(); dst.delete(); M.delete(); srcTri.delete(); dstTri.delete();
-        return { data: finalImgData, width: maxWidth, height: maxHeight };
+        return { data: finalImgData, width: targetWidth, height: targetHeight };
     }
 
     function createEditorForImage(dataUrl) {
@@ -551,8 +554,16 @@
         
         img.onload = () => {
             setTimeout(() => {
-                const originalPoints = detect4Corners(img);
-                const normalizedPoints = originalPoints.map(p => ({ x: p.x / img.naturalWidth, y: p.y / img.naturalHeight }));
+                const natW = img.naturalWidth;
+                const natH = img.naturalHeight;
+                
+                // 🌟 세로형 교재 비율에 맞추어 상하가 절대 잘리지 않도록 초기 4점 영역을 넉넉하게 지정
+                const normalizedPoints = [
+                    { x: 0.1, y: 0.03 },
+                    { x: 0.9, y: 0.03 },
+                    { x: 0.9, y: 0.97 },
+                    { x: 0.1, y: 0.97 }
+                ];
                 
                 const updateUI = () => {
                     const cw = img.clientWidth;
@@ -594,9 +605,9 @@
 
                     magnifier.style.left = `${e.clientX - 50}px`;
                     magnifier.style.top = `${e.clientY - 120}px`; 
-                    const bgX = (x / cw) * img.naturalWidth;
-                    const bgY = (y / ch) * img.naturalHeight;
-                    magnifier.style.backgroundSize = `${img.naturalWidth}px ${img.naturalHeight}px`;
+                    const bgX = (x / cw) * natW;
+                    const bgY = (y / ch) * natH;
+                    magnifier.style.backgroundSize = `${natW}px ${natH}px`;
                     magnifier.style.backgroundPosition = `-${bgX - 50}px -${bgY - 50}px`;
                 });
                 
