@@ -66,21 +66,25 @@
         
         /* 카메라 관련 UI */
         #camera-section { display: none; flex-direction: column; align-items: center; justify-content: center; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000; z-index: 2000; }
-        .video-container { position: relative; width: 100%; max-height: 75vh; display: flex; flex-direction: column; align-items: center; }
-        #camera-stream { width: 100%; max-height: 75vh; object-fit: contain; background: #111; cursor: crosshair; }
+        .video-container { position: relative; width: 100%; max-height: 75vh; display: flex; flex-direction: column; align-items: center; background: #111; overflow: hidden; }
+        #camera-stream { width: 100%; max-height: 75vh; object-fit: contain; cursor: crosshair; }
         .focus-ring { position: absolute; width: 60px; height: 60px; border: 2px solid #28a745; border-radius: 50%; display: none; transform: translate(-50%, -50%); pointer-events: none; transition: transform 0.2s, opacity 0.2s; box-shadow: 0 0 10px rgba(0,255,0,0.5); z-index: 2002; }
+        #focus-hint { color: rgba(255,255,255,0.7); position: absolute; top: 20px; font-size: 0.9rem; text-align: center; width: 100%; pointer-events: none; z-index: 2002; }
+        #cam-status { color: #fff; position: absolute; top: 10px; right: 10px; font-size: 1rem; font-weight: bold; z-index: 2002; background: rgba(0,0,0,0.5); padding: 5px 10px; border-radius: 4px; }
         
-        /* 🌟 새로 추가된 썸네일 미리보기 영역 */
-        #cam-thumbnails { position: absolute; bottom: 10px; left: 0; width: 100%; display: flex; gap: 10px; padding: 10px; box-sizing: border-box; overflow-x: auto; z-index: 2010; }
+        /* 🌟 좌측 하단 썸네일 스트립 디자인 (플로팅 스타일) */
+        #cam-thumbnails { position: absolute; bottom: 15px; left: 15px; display: flex; gap: 10px; max-width: calc(100% - 30px); overflow-x: auto; z-index: 2010; padding: 5px; box-sizing: border-box; background: rgba(0,0,0,0.4); border-radius: 6px; }
+        /* 스크롤바 숨기기 (모바일 최적화) */
+        #cam-thumbnails::-webkit-scrollbar { display: none; }
+        
         .thumb-item { position: relative; width: 50px; height: 66px; flex-shrink: 0; border: 2px solid #fff; border-radius: 4px; overflow: hidden; background: #000; box-shadow: 0 2px 5px rgba(0,0,0,0.5); }
         .thumb-item img { width: 100%; height: 100%; object-fit: cover; }
-        .thumb-badge { position: absolute; top: 2px; right: 2px; background: rgba(220, 53, 69, 0.9); color: #fff; font-size: 0.7rem; font-weight: bold; padding: 2px 4px; border-radius: 4px; line-height: 1; }
+        .thumb-badge { position: absolute; top: 2px; right: 2px; background: rgba(220, 53, 69, 0.9); color: #fff; font-size: 0.75rem; font-weight: bold; padding: 2px 5px; border-radius: 4px; line-height: 1; }
         
-        .camera-controls { display: flex; gap: 20px; padding: 20px; width: 100%; justify-content: center; box-sizing: border-box; z-index: 2010; }
+        .camera-controls { display: flex; gap: 20px; padding: 20px; width: 100%; justify-content: center; box-sizing: border-box; background: #000; z-index: 2015; }
         .cam-btn { padding: 15px 25px; border-radius: 30px; font-weight: bold; font-size: 1.1rem; cursor: pointer; border: none; }
         #snap-btn { background: #fff; color: #000; flex: 1; max-width: 200px; }
         #done-btn { background: #28a745; color: #fff; flex: 1; max-width: 200px; }
-        #focus-hint { color: rgba(255,255,255,0.7); position: absolute; top: 20px; font-size: 0.9rem; text-align: center; width: 100%; pointer-events: none; z-index: 2002; }
         
         #loading-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); color: white; justify-content: center; align-items: center; z-index: 5000; font-size: 1.2rem; flex-direction: column; gap: 15px; }
     </style>
@@ -126,9 +130,10 @@
 <div id="camera-section">
     <div class="video-container" id="video-container">
         <video id="camera-stream" autoplay playsinline></video>
+        <div id="cam-status">촬영: 0장</div>
         <div id="focus-ring" class="focus-ring"></div>
         <div id="focus-hint">화면을 터치하면 해당 영역에 초점을 맞춥니다</div>
-        <!-- 🌟 썸네일 스트립 컨테이너 -->
+        <!-- 🌟 좌측 하단 썸네일 스트립 위치 -->
         <div id="cam-thumbnails"></div>
     </div>
     <div class="camera-controls">
@@ -184,8 +189,10 @@
             videoTrack = videoStream.getVideoTracks()[0];
             tempCapturedImages = [];
             
-            // 🌟 썸네일 영역 초기화
+            // 🌟 촬영 진입 시 썸네일 및 카운트 초기화
             document.getElementById('cam-thumbnails').innerHTML = '';
+            document.getElementById('cam-thumbnails').style.display = 'none'; // 비어있을 땐 숨김
+            document.getElementById('cam-status').innerText = `촬영: 0장`;
             
             document.getElementById('camera-section').style.display = 'flex';
         } catch (err) { alert('카메라 권한이 거부되었습니다.'); }
@@ -208,7 +215,7 @@
     document.getElementById('snap-btn').addEventListener('click', () => {
         if (!videoStream) return;
         
-        // 🌟 셔터 플래시 효과 추가
+        // 🌟 셔터 플래시 효과
         const videoContainer = document.getElementById('video-container');
         const flash = document.createElement('div');
         flash.style.position = 'absolute';
@@ -227,24 +234,26 @@
         canvas.getContext('2d').drawImage(v, 0, 0);
         const dataUrl = canvas.toDataURL('image/jpeg', 1.0);
         tempCapturedImages.push(dataUrl);
+        
+        document.getElementById('cam-status').innerText = `촬영: ${tempCapturedImages.length}장`;
 
-        // 🌟 썸네일 이미지 및 번호 생성
+        // 🌟 썸네일 스트립 업데이트
         const thumbContainer = document.getElementById('cam-thumbnails');
+        thumbContainer.style.display = 'flex'; // 첫 사진 촬영 시 표시
+        
         const thumbItem = document.createElement('div');
         thumbItem.className = 'thumb-item';
-        
         const img = document.createElement('img');
         img.src = dataUrl;
-        
         const badge = document.createElement('div');
         badge.className = 'thumb-badge';
-        badge.innerText = tempCapturedImages.length;
+        badge.innerText = tempCapturedImages.length; // 촬영 순서대로 번호 부여
         
         thumbItem.appendChild(img);
         thumbItem.appendChild(badge);
         thumbContainer.appendChild(thumbItem);
         
-        // 새로 추가된 썸네일로 스크롤 자동 이동
+        // 추가된 썸네일이 보이도록 자동 스크롤
         thumbContainer.scrollLeft = thumbContainer.scrollWidth;
     });
 
