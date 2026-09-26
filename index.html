@@ -11,6 +11,49 @@
     <!-- Tesseract OCR 엔진 -->
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
     
+    <script>
+        // 🌟 카카오톡 등 인앱 브라우저 접속 시 외부 브라우저(크롬/사파리)로 자동 전환 또는 안내
+        function detectAndRedirectInApp() {
+            var ua = navigator.userAgent.toLowerCase();
+            var isKakao = ua.indexOf('kakaotalk') > -1;
+            var isInApp = /(line|instagram|facebook|fb|naver|everytime)/i.test(ua) || isKakao;
+            
+            if (isKakao) {
+                // 카카오톡 외부 브라우저 강제 호출 (안드로이드/iOS 공통)
+                location.href = 'kakaotalk://web/openExternal?url=' + encodeURIComponent(location.href);
+            }
+            
+            // 자동 전환이 안 되는 경우를 대비한 전체 화면 안내 UI
+            if (isInApp) {
+                window.onload = function() {
+                    var overlay = document.createElement('div');
+                    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.95);z-index:9999;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;text-align:center;box-sizing:border-box;';
+                    overlay.innerHTML = `
+                        <h2 style="color:#ffc107; margin-bottom: 20px;">⚠️ 인앱 브라우저 제한 안내</h2>
+                        <p style="font-size:1.1rem; line-height:1.6; word-break:keep-all;">현재 접속하신 카카오톡/앱 내부 브라우저에서는<br>보안 정책상 <strong>카메라 구동 및 PDF 저장 기능이 작동하지 않습니다.</strong></p>
+                        <div style="background:#222; padding:15px; border-radius:8px; margin: 25px 0;">
+                            <p style="margin:0; font-size:1rem; color:#ddd;">오른쪽 위(또는 아래)의 <strong>[⋮] 메뉴</strong>를 눌러<br><strong style="color:#28a745;">'다른 브라우저로 열기'</strong>를 선택해 주세요.</p>
+                        </div>
+                        <button onclick="copyToClipboard()" style="padding:15px 30px; font-size:1.1rem; font-weight:bold; background:#007bff; color:#fff; border:none; border-radius:8px; cursor:pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.3);">🔗 현재 주소 복사하기</button>
+                    `;
+                    document.body.appendChild(overlay);
+                };
+            }
+        }
+        
+        function copyToClipboard() {
+            var tempInput = document.createElement("input");
+            tempInput.value = location.href;
+            document.body.appendChild(tempInput);
+            tempInput.select();
+            document.execCommand("copy");
+            document.body.removeChild(tempInput);
+            alert("주소가 복사되었습니다. 크롬 브라우저를 열고 붙여넣기 해주세요.");
+        }
+        
+        detectAndRedirectInApp();
+    </script>
+
     <style>
         body { font-family: sans-serif; margin: 0; padding: 20px; background-color: #f4f4f4; color: #333; }
         .container { max-width: 800px; margin: auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
@@ -72,11 +115,9 @@
         #focus-hint { color: rgba(255,255,255,0.7); position: absolute; top: 20px; font-size: 0.9rem; text-align: center; width: 100%; pointer-events: none; z-index: 2002; }
         #cam-status { color: #fff; position: absolute; top: 10px; right: 10px; font-size: 1rem; font-weight: bold; z-index: 2002; background: rgba(0,0,0,0.5); padding: 5px 10px; border-radius: 4px; }
         
-        /* 🌟 좌측 하단 썸네일 스트립 디자인 (플로팅 스타일) */
+        /* 좌측 하단 썸네일 스트립 */
         #cam-thumbnails { position: absolute; bottom: 15px; left: 15px; display: flex; gap: 10px; max-width: calc(100% - 30px); overflow-x: auto; z-index: 2010; padding: 5px; box-sizing: border-box; background: rgba(0,0,0,0.4); border-radius: 6px; }
-        /* 스크롤바 숨기기 (모바일 최적화) */
         #cam-thumbnails::-webkit-scrollbar { display: none; }
-        
         .thumb-item { position: relative; width: 50px; height: 66px; flex-shrink: 0; border: 2px solid #fff; border-radius: 4px; overflow: hidden; background: #000; box-shadow: 0 2px 5px rgba(0,0,0,0.5); }
         .thumb-item img { width: 100%; height: 100%; object-fit: cover; }
         .thumb-badge { position: absolute; top: 2px; right: 2px; background: rgba(220, 53, 69, 0.9); color: #fff; font-size: 0.75rem; font-weight: bold; padding: 2px 5px; border-radius: 4px; line-height: 1; }
@@ -133,7 +174,6 @@
         <div id="cam-status">촬영: 0장</div>
         <div id="focus-ring" class="focus-ring"></div>
         <div id="focus-hint">화면을 터치하면 해당 영역에 초점을 맞춥니다</div>
-        <!-- 🌟 좌측 하단 썸네일 스트립 위치 -->
         <div id="cam-thumbnails"></div>
     </div>
     <div class="camera-controls">
@@ -189,9 +229,8 @@
             videoTrack = videoStream.getVideoTracks()[0];
             tempCapturedImages = [];
             
-            // 🌟 촬영 진입 시 썸네일 및 카운트 초기화
             document.getElementById('cam-thumbnails').innerHTML = '';
-            document.getElementById('cam-thumbnails').style.display = 'none'; // 비어있을 땐 숨김
+            document.getElementById('cam-thumbnails').style.display = 'none';
             document.getElementById('cam-status').innerText = `촬영: 0장`;
             
             document.getElementById('camera-section').style.display = 'flex';
@@ -215,7 +254,6 @@
     document.getElementById('snap-btn').addEventListener('click', () => {
         if (!videoStream) return;
         
-        // 🌟 셔터 플래시 효과
         const videoContainer = document.getElementById('video-container');
         const flash = document.createElement('div');
         flash.style.position = 'absolute';
@@ -237,9 +275,8 @@
         
         document.getElementById('cam-status').innerText = `촬영: ${tempCapturedImages.length}장`;
 
-        // 🌟 썸네일 스트립 업데이트
         const thumbContainer = document.getElementById('cam-thumbnails');
-        thumbContainer.style.display = 'flex'; // 첫 사진 촬영 시 표시
+        thumbContainer.style.display = 'flex';
         
         const thumbItem = document.createElement('div');
         thumbItem.className = 'thumb-item';
@@ -247,13 +284,12 @@
         img.src = dataUrl;
         const badge = document.createElement('div');
         badge.className = 'thumb-badge';
-        badge.innerText = tempCapturedImages.length; // 촬영 순서대로 번호 부여
+        badge.innerText = tempCapturedImages.length;
         
         thumbItem.appendChild(img);
         thumbItem.appendChild(badge);
         thumbContainer.appendChild(thumbItem);
         
-        // 추가된 썸네일이 보이도록 자동 스크롤
         thumbContainer.scrollLeft = thumbContainer.scrollWidth;
     });
 
@@ -327,7 +363,6 @@
         }
     }
 
-    // 드래그 앤 드롭 정렬
     let draggedItem = null;
     workspace.addEventListener('dragstart', (e) => {
         if(e.target.classList.contains('doc-wrapper')) {
@@ -359,7 +394,6 @@
         }, { offset: Number.NEGATIVE_INFINITY }).element;
     }
 
-    // 개별 이미지 평탄화 및 필터 처리 함수
     function processSingleImage(instance, filterType) {
         const hiddenCanvas = document.getElementById('hidden-canvas');
         let natW = instance.imgElement.naturalWidth;
