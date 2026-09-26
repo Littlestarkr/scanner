@@ -77,15 +77,15 @@
         .drag-handle { background: #eee; padding: 8px; cursor: grab; font-size: 0.9rem; font-weight: bold; color: #555; margin-bottom: 10px; border-radius: 4px; }
         .remove-btn { position: absolute; top: 10px; right: 10px; background: #dc3545; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 0.8rem; z-index: 10; }
         
-        /* 편집 영역 3:4 세로형 비율 유지 */
-        .editor-container { position: relative; display: inline-block; overflow: visible; background: #eee; line-height: 0; touch-action: none; width: 100%; max-width: 450px; aspect-ratio: 3 / 4; margin: 15px auto; }
-        .editor-container img { width: 100%; height: 100%; object-fit: contain; display: block; margin: 0; pointer-events: none; user-select: none; -webkit-user-drag: none; }
+        /* 🌟 이미지 원본 비율을 온전히 반영하는 유연한 에디터 컨테이너 */
+        .editor-container { position: relative; display: inline-block; overflow: visible; background: #eee; line-height: 0; touch-action: none; max-width: 100%; margin: 15px auto; }
+        .editor-container img { max-width: 100%; height: auto; display: block; margin: 0; pointer-events: none; user-select: none; -webkit-user-drag: none; }
         .editor-svg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: auto; overflow: visible; }
         .poly-line { fill: rgba(0, 123, 255, 0.2); stroke: #007bff; stroke-width: 2; pointer-events: none; }
         .corner-point { fill: #007bff; stroke: white; stroke-width: 3; cursor: grab; r: 22; }
         .corner-point:active { cursor: grabbing; fill: #0056b3; }
         
-        .preview-img { width: 100%; max-width: 450px; aspect-ratio: 3 / 4; object-fit: contain; border: 1px solid #ccc; display: none; margin: 15px auto; }
+        .preview-img { max-width: 100%; height: auto; border: 1px solid #ccc; display: none; margin: 15px auto; }
         
         .page-controls { display: flex; gap: 10px; margin-bottom: 10px; }
         .flatten-btn { flex: 1; padding: 8px; background: #17a2b8; color: white; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; }
@@ -103,7 +103,7 @@
         .radio-group { display: flex; justify-content: center; gap: 20px; flex-wrap: wrap; }
         .radio-item { cursor: pointer; font-size: 0.95rem; color: #555; display: flex; align-items: center; gap: 5px; }
         
-        /* 카메라 촬영 화면 비율 3:4 고정 */
+        /* 카메라 촬영 화면 비율 3:4 세로형 고정 */
         #camera-section { display: none; flex-direction: column; align-items: center; justify-content: center; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000; z-index: 2000; }
         .video-container { position: relative; width: 100%; max-height: 75vh; aspect-ratio: 3 / 4; display: flex; flex-direction: column; align-items: center; background: #111; overflow: hidden; }
         #camera-stream { width: 100%; height: 100%; object-fit: cover; cursor: crosshair; }
@@ -540,14 +540,16 @@
                 const normalizedPoints = originalPoints.map(p => ({ x: p.x / img.naturalWidth, y: p.y / img.naturalHeight }));
                 
                 const updateUI = () => {
-                    const cw = img.clientWidth || container.clientWidth;
-                    const ch = img.clientHeight || container.clientHeight;
+                    const cw = img.clientWidth;
+                    const ch = img.clientHeight;
                     if (!cw || !ch) return;
+                    svg.setAttribute('viewBox', `0 0 ${cw} ${ch}`);
                     const pointsStr = normalizedPoints.map(p => `${p.x * cw},${p.y * ch}`).join(" ");
                     polygon.setAttribute('points', pointsStr);
                     normalizedPoints.forEach((p, i) => { circles[i].setAttribute('cx', p.x * cw); circles[i].setAttribute('cy', p.y * ch); });
                 };
                 updateUI();
+                window.addEventListener('resize', updateUI);
                 
                 let draggingIdx = -1;
                 svg.addEventListener('pointerdown', (e) => {
@@ -562,12 +564,12 @@
                 svg.addEventListener('pointermove', (e) => {
                     if (draggingIdx === -1) return;
                     e.preventDefault();
-                    const rect = svg.getBoundingClientRect();
-                    const cw = img.clientWidth || container.clientWidth;
-                    const ch = img.clientHeight || container.clientHeight;
+                    const rect = img.getBoundingClientRect();
+                    const cw = img.clientWidth;
+                    const ch = img.clientHeight;
                     
-                    let x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
-                    let y = Math.max(0, Math.min(e.clientY - rect.top, rect.height));
+                    let x = Math.max(0, Math.min(e.clientX - rect.left, cw));
+                    let y = Math.max(0, Math.min(e.clientY - rect.top, ch));
                     
                     normalizedPoints[draggingIdx] = { x: x / cw, y: y / ch };
                     updateUI();
