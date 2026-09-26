@@ -12,32 +12,38 @@
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
     
     <script>
-        // 🌟 카카오톡 등 인앱 브라우저 접속 시 외부 브라우저(크롬/사파리)로 자동 전환 또는 안내
+        // 🌟 인앱 브라우저 강력 차단 및 크롬 강제 전환 로직
         function detectAndRedirectInApp() {
             var ua = navigator.userAgent.toLowerCase();
-            var isKakao = ua.indexOf('kakaotalk') > -1;
-            var isInApp = /(line|instagram|facebook|fb|naver|everytime)/i.test(ua) || isKakao;
-            
-            if (isKakao) {
-                // 카카오톡 외부 브라우저 강제 호출 (안드로이드/iOS 공통)
-                location.href = 'kakaotalk://web/openExternal?url=' + encodeURIComponent(location.href);
-            }
-            
-            // 자동 전환이 안 되는 경우를 대비한 전체 화면 안내 UI
+            var isKakao = ua.match(/kakaotalk/i);
+            var isNaver = ua.match(/naver/i);
+            var isInApp = isKakao || isNaver || ua.match(/(line|instagram|facebook|fb|everytime|daum)/i);
+
             if (isInApp) {
-                window.onload = function() {
+                // 안드로이드 환경: Intent를 사용하여 구글 크롬 강제 실행
+                if (navigator.userAgent.match(/android/i)) {
+                    var url = location.href.replace(/https?:\/\//i, '');
+                    location.href = 'intent://' + url + '#Intent;scheme=https;package=com.android.chrome;end';
+                } 
+                // iOS 카카오톡 환경: 카카오톡 전용 외부 브라우저 호출 스킴
+                else if (isKakao) {
+                    location.href = 'kakaotalk://web/openExternal?url=' + encodeURIComponent(location.href);
+                }
+
+                // 강제 전환이 실패했을 경우를 대비한 화면 덮기 안내 UI
+                window.addEventListener('DOMContentLoaded', function() {
                     var overlay = document.createElement('div');
                     overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.95);z-index:9999;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;text-align:center;box-sizing:border-box;';
                     overlay.innerHTML = `
-                        <h2 style="color:#ffc107; margin-bottom: 20px;">⚠️ 인앱 브라우저 제한 안내</h2>
-                        <p style="font-size:1.1rem; line-height:1.6; word-break:keep-all;">현재 접속하신 카카오톡/앱 내부 브라우저에서는<br>보안 정책상 <strong>카메라 구동 및 PDF 저장 기능이 작동하지 않습니다.</strong></p>
+                        <h2 style="color:#ffc107; margin-bottom: 20px;">⚠️ 호환되지 않는 브라우저입니다</h2>
+                        <p style="font-size:1.1rem; line-height:1.6; word-break:keep-all;">카카오톡, 네이버 등의 앱 내부에서는<br>보안 정책상 <strong>카메라 구동 및 파일 저장이 차단</strong>됩니다.</p>
                         <div style="background:#222; padding:15px; border-radius:8px; margin: 25px 0;">
-                            <p style="margin:0; font-size:1rem; color:#ddd;">오른쪽 위(또는 아래)의 <strong>[⋮] 메뉴</strong>를 눌러<br><strong style="color:#28a745;">'다른 브라우저로 열기'</strong>를 선택해 주세요.</p>
+                            <p style="margin:0; font-size:1rem; color:#ddd;">오른쪽 위(또는 아래)의 <strong>[⋮] 또는 [≡] 메뉴</strong>를 눌러<br><strong style="color:#28a745;">'다른 브라우저로 열기(크롬)'</strong>를 선택해 주세요.</p>
                         </div>
                         <button onclick="copyToClipboard()" style="padding:15px 30px; font-size:1.1rem; font-weight:bold; background:#007bff; color:#fff; border:none; border-radius:8px; cursor:pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.3);">🔗 현재 주소 복사하기</button>
                     `;
                     document.body.appendChild(overlay);
-                };
+                });
             }
         }
         
@@ -48,7 +54,7 @@
             tempInput.select();
             document.execCommand("copy");
             document.body.removeChild(tempInput);
-            alert("주소가 복사되었습니다. 크롬 브라우저를 열고 붙여넣기 해주세요.");
+            alert("주소가 복사되었습니다. 크롬 브라우저를 열고 주소창에 붙여넣기 해주세요.");
         }
         
         detectAndRedirectInApp();
@@ -234,7 +240,11 @@
             document.getElementById('cam-status').innerText = `촬영: 0장`;
             
             document.getElementById('camera-section').style.display = 'flex';
-        } catch (err) { alert('카메라 권한이 거부되었습니다.'); }
+        } catch (err) { 
+            // 🌟 권한 거부 또는 인앱 브라우저 차단 시 강제 오류 팝업 및 카메라 창 닫기
+            document.getElementById('camera-section').style.display = 'none';
+            alert('카메라 접근 권한이 거부되었거나 지원되지 않는 브라우저입니다.\n\n[해결 방법]\n우측 상단 또는 하단의 [⋮] 메뉴를 눌러 반드시 "다른 브라우저로 열기(크롬)"를 선택해 주세요.'); 
+        }
     });
 
     document.getElementById('video-container').addEventListener('pointerdown', async (e) => {
